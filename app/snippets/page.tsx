@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Trash2, Copy, Plus } from "lucide-react";
 import { Navbar } from "@/components/navbar";
+import Loader from "@/components/ui/loader";
 
 const LANGUAGES = [
 	"javascript",
@@ -274,7 +275,7 @@ export default function SnippetsPage() {
 								<Button
 									type='submit'
 									className='bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0'>
-									{editingId ? "Update Snippet" : "Save Snippet"}
+									{editingId ? <Loader/> : "Save Snippet"}
 								</Button>
 								<Button
 									type='button'
@@ -290,9 +291,9 @@ export default function SnippetsPage() {
 
 				{/* Grid */}
 				{loading ? (
-					<p className='text-center text-gray-400 py-12'>
-						Loading snippets...
-					</p>
+					<div className="w-full h-full flex items-center justify-center " >
+<Loader/>
+					</div>
 				) : snippets.length === 0 ? (
 					<div className='text-center text-gray-400 py-12'>
 						<p className='mb-4'>
