@@ -1,7 +1,6 @@
 'use client';
 
 import React from "react"
-
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -17,6 +16,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ArrowLeft, Trash2, Copy, Plus } from 'lucide-react';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 
 const LANGUAGES = [
   'javascript',
@@ -35,6 +37,16 @@ const LANGUAGES = [
   'bash',
 ];
 
+const snippetSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  description: z.string().optional(),
+  code: z.string().min(1, 'Code is required'),
+  language: z.string().min(1, 'Language is required'),
+  tags: z.string().optional(),
+});
+
+type SnippetFormValues = z.infer<typeof snippetSchema>;
+
 interface Snippet {
   id: string;
   title: string;
@@ -51,13 +63,26 @@ export default function SnippetsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    code: '',
-    language: 'javascript',
-    tags: '',
+
+  const form = useForm<SnippetFormValues>({
+    resolver: zodResolver(snippetSchema),
+    defaultValues: {
+      title: '',
+      description: '',
+      code: '',
+      language: 'javascript',
+      tags: '',
+    },
   });
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    setValue,
+    formState: { errors },
+  } = form;
 
   useEffect(() => {
     fetchSnippets();
@@ -77,20 +102,20 @@ export default function SnippetsPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const onSubmit = async (data: SnippetFormValues) => {
     try {
-      const tags = formData.tags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean);
+      const tags = data.tags
+        ? data.tags
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+        : [];
 
       const payload = {
-        title: formData.title,
-        description: formData.description,
-        code: formData.code,
-        language: formData.language,
+        title: data.title,
+        description: data.description || '',
+        code: data.code,
+        language: data.language,
         tags,
       };
 
@@ -113,15 +138,7 @@ export default function SnippetsPage() {
 
       console.log('[v0] Snippet saved successfully');
       await fetchSnippets();
-      setShowForm(false);
-      setEditingId(null);
-      setFormData({
-        title: '',
-        description: '',
-        code: '',
-        language: 'javascript',
-        tags: '',
-      });
+      closeForm();
     } catch (error) {
       console.error('[v0] Error saving snippet:', error);
     }
@@ -129,17 +146,19 @@ export default function SnippetsPage() {
 
   const handleEdit = (snippet: Snippet) => {
     setEditingId(snippet.id);
-    const tagsString = Array.isArray(snippet.tags) 
-      ? snippet.tags.join(', ') 
+    const tagsString = Array.isArray(snippet.tags)
+      ? snippet.tags.join(', ')
       : '';
     console.log('[v0] Editing snippet:', { id: snippet.id, tags: snippet.tags, tagsString });
-    setFormData({
+
+    reset({
       title: snippet.title,
       description: snippet.description,
       code: snippet.code,
       language: snippet.language,
       tags: tagsString,
     });
+
     setShowForm(true);
   };
 
@@ -169,10 +188,10 @@ export default function SnippetsPage() {
     }
   };
 
-  const handleCancel = () => {
+  const closeForm = () => {
     setShowForm(false);
     setEditingId(null);
-    setFormData({
+    reset({
       title: '',
       description: '',
       code: '',
@@ -217,7 +236,7 @@ export default function SnippetsPage() {
               <h2 className="text-2xl font-bold text-white mb-6">
                 {editingId ? 'Edit Snippet' : 'Add New Snippet'}
               </h2>
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                 {/* Title */}
                 <div className="space-y-2">
                   <Label htmlFor="title" className="text-white">
@@ -226,13 +245,12 @@ export default function SnippetsPage() {
                   <Input
                     id="title"
                     placeholder="e.g., React useEffect Hook"
-                    value={formData.title}
-                    onChange={(e) =>
-                      setFormData({ ...formData, title: e.target.value })
-                    }
+                    {...register('title')}
                     className="bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400"
-                    required
                   />
+                  {errors.title && (
+                    <p className="text-red-400 text-sm">{errors.title.message}</p>
+                  )}
                 </div>
 
                 {/* Description */}
@@ -243,15 +261,12 @@ export default function SnippetsPage() {
                   <Textarea
                     id="description"
                     placeholder="Describe what this snippet does..."
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        description: e.target.value,
-                      })
-                    }
+                    {...register('description')}
                     className="bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400 min-h-20"
                   />
+                  {errors.description && (
+                    <p className="text-red-400 text-sm">{errors.description.message}</p>
+                  )}
                 </div>
 
                 {/* Language */}
@@ -259,23 +274,31 @@ export default function SnippetsPage() {
                   <Label htmlFor="language" className="text-white">
                     Language
                   </Label>
-                  <Select
-                    value={formData.language}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, language: value })
-                    }
-                  >
-                    <SelectTrigger className="bg-slate-700/50 border-purple-500/30 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {LANGUAGES.map((lang) => (
-                        <SelectItem key={lang} value={lang}>
-                          {lang.charAt(0).toUpperCase() + lang.slice(1)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Controller
+                    name="language"
+                    control={control}
+                    render={({ field }) => (
+                      <Select
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                        value={field.value}
+                      >
+                        <SelectTrigger className="bg-slate-700/50 border-purple-500/30 text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LANGUAGES.map((lang) => (
+                            <SelectItem key={lang} value={lang}>
+                              {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {errors.language && (
+                    <p className="text-red-400 text-sm">{errors.language.message}</p>
+                  )}
                 </div>
 
                 {/* Code */}
@@ -286,13 +309,12 @@ export default function SnippetsPage() {
                   <Textarea
                     id="code"
                     placeholder="Paste your code here..."
-                    value={formData.code}
-                    onChange={(e) =>
-                      setFormData({ ...formData, code: e.target.value })
-                    }
+                    {...register('code')}
                     className="bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400 font-mono min-h-64"
-                    required
                   />
+                  {errors.code && (
+                    <p className="text-red-400 text-sm">{errors.code.message}</p>
+                  )}
                 </div>
 
                 {/* Tags */}
@@ -303,12 +325,12 @@ export default function SnippetsPage() {
                   <Input
                     id="tags"
                     placeholder="e.g., react, hooks, useEffect"
-                    value={formData.tags}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tags: e.target.value })
-                    }
+                    {...register('tags')}
                     className="bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400"
                   />
+                  {errors.tags && (
+                    <p className="text-red-400 text-sm">{errors.tags.message}</p>
+                  )}
                 </div>
 
                 {/* Action buttons */}
@@ -322,7 +344,7 @@ export default function SnippetsPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={handleCancel}
+                    onClick={closeForm}
                     className="border-purple-400/50 text-white bg-transparent"
                   >
                     Cancel
