@@ -35,9 +35,9 @@ export async function PUT(
     const body = await req.json();
     const { title, description, code, language, tags } = body;
 
-    if (!title || !code || !language) {
+    if (!title || !description || !code || !language || !tags || tags.length === 0) {
       return NextResponse.json(
-        { error: 'Missing required fields: title, code, language' },
+        { error: 'Missing required fields: title, description, code, language, tags' },
         { status: 400 }
       );
     }
@@ -45,10 +45,10 @@ export async function PUT(
     const snippet = await updateSnippet(
       id,
       title,
-      description || '',
+      description,
       code,
       language,
-      tags || []
+      tags
     );
 
     return NextResponse.json(snippet);

@@ -38,11 +38,11 @@ const LANGUAGES = [
 ];
 
 const snippetSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  description: z.string().optional(),
-  code: z.string().min(1, "Code is required"),
-  language: z.string().min(1, "Language is required"),
-  tags: z.string().optional(),
+  title: z.string().min(1, 'Title is required'),
+  description: z.string().min(1, 'Description is required'),
+  code: z.string().min(1, 'Code is required'),
+  language: z.string().min(1, 'Language is required'),
+  tags: z.string().min(1, 'Tags are required'),
 });
 
 type SnippetFormValues = z.infer<typeof snippetSchema>;
@@ -106,7 +106,7 @@ export default function SnippetsPage() {
       setSubmitting(true);
       const payload = {
         title: data.title,
-        description: data.description || "",
+        description: data.description,
         code: data.code,
         language: data.language,
         tags: data.tags
