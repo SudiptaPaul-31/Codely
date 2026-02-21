@@ -139,17 +139,11 @@ Foundation for on-chain snippet verification
 
 🔒 Private & shared snippets
 
-🤝 Contributing
+## Contributing
 
-Contributions are welcome and appreciated!
+Contributions are welcome and highly appreciated! We follow a structured contribution process to maintain code quality and consistency.
 
-Fork the repository
-
-Create a new branch
-
-Commit your changes
-
-Open a Pull Request
+**Please read our comprehensive [CONTRIBUTING.md](./CONTRIBUTING.md) guide before starting to contribute.**
 
 📄 License
 
