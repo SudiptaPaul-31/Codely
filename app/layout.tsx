@@ -2,6 +2,7 @@ import React from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import ClientWalletProvider from "@/components/ClientWalletProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,9 +36,11 @@ export default function RootLayout({
 	children,
 }: Readonly<{ children: React.ReactNode }>) {
 	return (
-		<html lang='en'>
+		<html lang='en' suppressHydrationWarning>
 			<body className='font-sans antialiased'>
-				<main>{children}</main>
+				<ClientWalletProvider>
+					<main>{children}</main>
+				</ClientWalletProvider>
 				<Analytics />
 			</body>
 		</html>

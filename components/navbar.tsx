@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Code2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { WalletButton } from "@/components/WalletConnect";
 import { cn } from "@/lib/utils";
 
 const NAV_LINKS = [
@@ -27,25 +28,28 @@ export function Navbar() {
 					</span>
 				</Link>
 
-				{/* Nav links */}
-				<nav className='flex items-center gap-1'>
-					{NAV_LINKS.map(({ label, href }) => (
-						<Link
-							key={href}
-							href={href}>
-							<Button
-								variant='ghost'
-								className={cn(
-									"text-sm font-medium transition-colors",
-									pathname === href
-										? "text-purple-400 bg-purple-400/10"
-										: "text-gray-300 hover:text-purple-400 hover:bg-purple-400/10",
-								)}>
-								{label}
-							</Button>
-						</Link>
-					))}
-				</nav>
+				{/* Nav links & Wallet */}
+				<div className='flex items-center gap-4'>
+					<nav className='flex items-center gap-1'>
+						{NAV_LINKS.map(({ label, href }) => (
+							<Link
+								key={href}
+								href={href}>
+								<Button
+									variant='ghost'
+									className={cn(
+										"text-sm font-medium transition-colors",
+										pathname === href
+											? "text-purple-400 bg-purple-400/10"
+											: "text-gray-300 hover:text-purple-400 hover:bg-purple-400/10",
+									)}>
+									{label}
+								</Button>
+							</Link>
+						))}
+					</nav>
+					<WalletButton />
+				</div>
 			</div>
 		</header>
 	);
