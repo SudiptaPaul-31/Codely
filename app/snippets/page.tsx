@@ -1,51 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Trash2, Copy, Plus } from "lucide-react";
 import { Navbar } from "@/components/navbar";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import Loader from "@/components/ui/loader";
+import { snippetSchema } from "@/validiation/snippet-form-validiation";
+import SnippetForm from "@/components/SnippetForm";
+import { SnippetFormValues } from "@/types/type";
 
-const LANGUAGES = [
-  "javascript",
-  "typescript",
-  "python",
-  "java",
-  "csharp",
-  "cpp",
-  "go",
-  "rust",
-  "php",
-  "ruby",
-  "sql",
-  "html",
-  "css",
-  "bash",
-];
-
-const snippetSchema = z.object({
-  title: z.string().min(1, 'Title is required'),
-  description: z.string().min(1, 'Description is required'),
-  code: z.string().min(1, 'Code is required'),
-  language: z.string().min(1, 'Language is required'),
-  tags: z.string().min(1, 'Tags are required'),
-});
-
-type SnippetFormValues = z.infer<typeof snippetSchema>;
 
 interface Snippet {
   id: string;
@@ -65,6 +31,8 @@ export default function SnippetsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+
+
   const form = useForm<SnippetFormValues>({
     resolver: zodResolver(snippetSchema),
     defaultValues: {
@@ -77,9 +45,6 @@ export default function SnippetsPage() {
   });
 
   const {
-    register,
-    handleSubmit,
-    control,
     reset,
     formState: { errors },
   } = form;
@@ -101,41 +66,7 @@ export default function SnippetsPage() {
     }
   };
 
-  const onSubmit = async (data: SnippetFormValues) => {
-    try {
-      setSubmitting(true);
-      const payload = {
-        title: data.title,
-        description: data.description,
-        code: data.code,
-        language: data.language,
-        tags: data.tags
-          ? data.tags
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean)
-          : [],
-      };
 
-      const res = await fetch(
-        editingId ? `/api/snippets/${editingId}` : "/api/snippets",
-        {
-          method: editingId ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      if (!res.ok) throw new Error("Failed to save snippet");
-
-      await fetchSnippets();
-      closeForm();
-    } catch (error) {
-      console.error("Error saving snippet:", error);
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleEdit = (snippet: Snippet) => {
     setEditingId(snippet.id);
@@ -200,114 +131,13 @@ export default function SnippetsPage() {
         </div>
 
         {/* Form */}
-        {showForm && (
-          <Card className="mb-8 bg-slate-800/50 border-purple-500/30 backdrop-blur-xl p-6">
-            <h2 className="text-2xl font-bold text-white mb-6">
-              {editingId ? "Edit Snippet" : "Add New Snippet"}
-            </h2>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="title" className="text-white">
-                  Title
-                </Label>
-                <Input
-                  id="title"
-                  placeholder="e.g., React useEffect Hook"
-                  {...register("title")}
-                  className="bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400"
-                />
-                {errors.title && (
-                  <p className="text-red-400 text-sm">{errors.title.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-white">
-                  Description
-                </Label>
-                <Textarea
-                  id="description"
-                  placeholder="Describe what this snippet does..."
-                  {...register("description")}
-                  className="bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400 min-h-20"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-white">Language</Label>
-                <Controller
-                  name="language"
-                  control={control}
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger className="bg-slate-700/50 border-purple-500/30 text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {LANGUAGES.map((lang) => (
-                          <SelectItem key={lang} value={lang}>
-                            {lang.charAt(0).toUpperCase() + lang.slice(1)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="code" className="text-white">
-                  Code
-                </Label>
-                <Textarea
-                  id="code"
-                  placeholder="Paste your code here..."
-                  {...register("code")}
-                  className="bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400 font-mono min-h-64"
-                />
-                {errors.code && (
-                  <p className="text-red-400 text-sm">{errors.code.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="tags" className="text-white">
-                  Tags (comma-separated)
-                </Label>
-                <Input
-                  id="tags"
-                  placeholder="e.g., react, hooks, useEffect"
-                  {...register("tags")}
-                  className="bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400"
-                />
-              </div>
-
-              <div className="flex gap-4">
-                <Button
-                  type="submit"
-                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0"
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <Loader />
-                  ) : editingId ? (
-                    "Update Snippet"
-                  ) : (
-                    "Save Snippet"
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={closeForm}
-                  className="border-purple-400/50 text-white bg-transparent"
-                >
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </Card>
-        )}
+        {showForm &&
+          <SnippetForm
+            closeForm={closeForm}
+            editingId={editingId}
+            setSubmitting={setSubmitting}
+            submitting={submitting}
+          />}
 
         {/* Grid */}
         {loading ? (
