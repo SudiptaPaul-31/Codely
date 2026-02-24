@@ -20,6 +20,7 @@ import React, { SetStateAction } from "react";
 import { SnippetFormValues } from "@/types/type";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { snippetSchema } from "@/validiation/snippet-form-validiation";
+import { toast } from "sonner";
 
 interface SnippetFormProps {
   editingId: string | null;
@@ -53,6 +54,14 @@ export default function SnippetForm({
   } = form;
 
   const onSubmit = async (data: SnippetFormValues) => {
+    // Mock isConnected state - replace with real state later
+    const isConnected = false;
+
+    if (!isConnected) {
+      toast.error("Please connect your wallet before submitting.");
+      return;
+    }
+
     try {
       setSubmitting(true);
       const payload = {
