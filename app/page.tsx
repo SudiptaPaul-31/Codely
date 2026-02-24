@@ -120,12 +120,6 @@ const CODE_LINES = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white text-slate-900">
-      {/* Figma Design Reference:
-          Figma File: https://www.figma.com/design/codely-landing-page
-          (Replace with actual Figma link once shared by project maintainer)
-      */}
-
-      <Navbar />
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden bg-gradient-to-b from-slate-50 via-white to-white pt-20 pb-28">

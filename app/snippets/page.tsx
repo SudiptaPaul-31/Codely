@@ -154,8 +154,18 @@ export default function SnippetsPage() {
 	};
 
 	return (
-		<div className='min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900'>
-			<Navbar />
+		<div className='min-h-screen relative bg-gradient-to-b from-slate-50 via-white to-white'>
+
+			<div
+				aria-hidden
+				className="pointer-events-none absolute -top-32 -left-32 w-[500px] h-[500px] rounded-full bg-indigo-100/60 blur-3xl"
+			/>
+			<div
+				aria-hidden
+				className="pointer-events-none absolute -top-16 right-0 w-[400px] h-[400px] rounded-full bg-violet-100/50 blur-3xl"
+			/>
+
+
 			<div className='fixed inset-0 overflow-hidden pointer-events-none'>
 				<div className='absolute top-20 left-10 w-72 h-72 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-glow-pulse' />
 				<div
@@ -167,11 +177,11 @@ export default function SnippetsPage() {
 			<div className='relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'>
 				{/* Page heading row */}
 				<div className='flex items-center justify-between mb-8'>
-					<h1 className='text-2xl font-bold text-white'>My Snippets</h1>
+					<h1 className='text-2xl font-bold text-slate-900  '>My Snippets</h1>
 					{!showForm && (
 						<Button
 							onClick={() => setShowForm(true)}
-							className='bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 gap-2'>
+							className='rounded-[50px] bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 gap-2'>
 							<Plus className='w-4 h-4' /> Add Snippet
 						</Button>
 					)}
@@ -179,7 +189,15 @@ export default function SnippetsPage() {
 
 				{/* Form */}
 				{showForm && (
-					<Card className='mb-8 bg-slate-800/50 border-purple-500/30 backdrop-blur-xl p-6'>
+					<Card className="mb-10 relative overflow-hidden
+  bg-gradient-to-br from-slate-900/80 via-slate-800/70 to-slate-900/80
+  border border-purple-500/20
+  backdrop-blur-2xl
+  shadow-2xl shadow-purple-500/10
+  p-8 rounded-2xl">
+
+						<div className="absolute -top-24 -right-24 w-72 h-72 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
+						<div className="absolute -bottom-24 -left-24 w-72 h-72 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
 						<h2 className='text-2xl font-bold text-white mb-6'>
 							{editingId ? "Edit Snippet" : "Add New Snippet"}
 						</h2>
@@ -194,7 +212,7 @@ export default function SnippetsPage() {
 							<div className='space-y-2'>
 								<Label
 									htmlFor='title'
-									className='text-white'>
+									className="text-slate-300 font-medium">
 									Title
 								</Label>
 								<Input
@@ -207,14 +225,21 @@ export default function SnippetsPage() {
 											title: e.target.value,
 										})
 									}
-									className='bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400'
+									className="bg-slate-800/60
+border border-purple-500/30
+text-white
+placeholder:text-slate-400
+focus:border-purple-400
+focus:ring-2
+focus:ring-purple-500/30
+transition-all duration-200"
 									required
 								/>
 							</div>
 							<div className='space-y-2'>
 								<Label
 									htmlFor='description'
-									className='text-white'>
+									className="text-slate-300 font-medium">
 									Description
 								</Label>
 								<Textarea
@@ -227,17 +252,31 @@ export default function SnippetsPage() {
 											description: e.target.value,
 										})
 									}
-									className='bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400 min-h-20'
+									className="bg-slate-800/60
+border border-purple-500/30
+text-white
+placeholder:text-slate-400
+focus:border-purple-400
+focus:ring-2
+focus:ring-purple-500/30
+transition-all duration-200"
 								/>
 							</div>
 							<div className='space-y-2'>
-								<Label className='text-white'>Language</Label>
+								<Label className="text-slate-300 font-medium">Language</Label>
 								<Select
 									value={formData.language}
 									onValueChange={(v) =>
 										setFormData({ ...formData, language: v })
 									}>
-									<SelectTrigger className='bg-slate-700/50 border-purple-500/30 text-white'>
+									<SelectTrigger className="bg-slate-800/60
+border border-purple-500/30
+text-white
+placeholder:text-slate-400
+focus:border-purple-400
+focus:ring-2
+focus:ring-purple-500/30
+transition-all duration-200">
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -254,7 +293,7 @@ export default function SnippetsPage() {
 							<div className='space-y-2'>
 								<Label
 									htmlFor='code'
-									className='text-white'>
+									className="text-slate-300 font-medium">
 									Code
 								</Label>
 								<Textarea
@@ -264,14 +303,21 @@ export default function SnippetsPage() {
 									onChange={(e) =>
 										setFormData({ ...formData, code: e.target.value })
 									}
-									className='bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400 font-mono min-h-64'
+									className="bg-slate-800/60
+border border-purple-500/30
+text-white
+placeholder:text-slate-400
+focus:border-purple-400
+focus:ring-2
+focus:ring-purple-500/30
+transition-all duration-200"
 									required
 								/>
 							</div>
 							<div className='space-y-2'>
 								<Label
 									htmlFor='tags'
-									className='text-white'>
+									className="text-slate-300 font-medium">
 									Tags (comma-separated)
 								</Label>
 								<Input
@@ -281,7 +327,14 @@ export default function SnippetsPage() {
 									onChange={(e) =>
 										setFormData({ ...formData, tags: e.target.value })
 									}
-									className='bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400'
+									className="bg-slate-800/60
+border border-purple-500/30
+text-white
+placeholder:text-slate-400
+focus:border-purple-400
+focus:ring-2
+focus:ring-purple-500/30
+transition-all duration-200"
 								/>
 							</div>
 							<div className='flex gap-4'>
@@ -316,13 +369,13 @@ export default function SnippetsPage() {
 					</div>
 				) : snippets.length === 0 ? (
 					<div className='text-center text-gray-400 py-12'>
-						<p className='mb-4'>
+						<p className='mb-4 text-slate-900 font-medium '>
 							No snippets yet. Create your first one!
 						</p>
 						{!showForm && (
 							<Button
 								onClick={() => setShowForm(true)}
-								className='bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0'>
+								className='rounded-[50px] bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0'>
 								Create Snippet
 							</Button>
 						)}
