@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSnippets, createSnippet } from '@/lib/db';
+import { getSnippets, createSnippet, getSnippetsByMultipleTags } from '@/lib/db';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const snippets = await getSnippets();
+    const { searchParams } = new URL(req.url);
+    const tagsParam = searchParams.get('tags');
+    const matchAll = searchParams.get('matchAll') === 'true';
+    
+    let snippets;
+    if (tagsParam) {
+      // Import the new function
+      const { getSnippetsByMultipleTags } = await import('@/lib/db');
+      const tags = tagsParam.split(',').map(t => t.trim()).filter(Boolean);
+      snippets = await getSnippetsByMultipleTags(tags, matchAll);
+    } else {
+      snippets = await getSnippets();
+    }
+    
     return NextResponse.json(snippets);
   } catch (error) {
     console.error('[v0] Error fetching snippets:', error);

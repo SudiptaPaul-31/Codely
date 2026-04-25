@@ -83,3 +83,55 @@ export async function deleteSnippet(id: string) {
     throw error;
   }
 }
+
+export async function getSnippetsByTags(tags: string[]) {
+  try {
+    if (!tags || tags.length === 0) {
+      return await getSnippets(); // Return all if no tags specified
+    }
+    
+    // Query snippets that contain ANY of the provided tags
+    // Using JSONB array operators for tag matching
+    const tagArrayLower = tags.map(t => t.toLowerCase());
+    const result = await sql`
+      SELECT * FROM snippets 
+      WHERE tags && ${tagArrayLower}::text[]
+      ORDER BY created_at DESC
+    `;
+    return result as any[];
+  } catch (error) {
+    console.error('Error fetching snippets by tags:', error);
+    throw error;
+  }
+}
+
+export async function getSnippetsByMultipleTags(tags: string[], matchAll: boolean = false) {
+  try {
+    if (!tags || tags.length === 0) {
+      return await getSnippets();
+    }
+    
+    const tagArrayLower = tags.map(t => t.toLowerCase());
+    
+    if (matchAll) {
+      // Return snippets that contain ALL specified tags
+      const result = await sql`
+        SELECT * FROM snippets 
+        WHERE tags @> ${JSON.stringify(tagArrayLower)}::jsonb
+        ORDER BY created_at DESC
+      `;
+      return result as any[];
+    } else {
+      // Return snippets that contain ANY of the specified tags
+      const result = await sql`
+        SELECT * FROM snippets 
+        WHERE tags && ${tagArrayLower}::text[]
+        ORDER BY created_at DESC
+      `;
+      return result as any[];
+    }
+  } catch (error) {
+    console.error('Error fetching snippets by multiple tags:', error);
+    throw error;
+  }
+}

@@ -16,3 +16,5 @@ CREATE TABLE snippets (
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_snippets_language ON snippets(language);
 CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON snippets(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_snippets_tags ON snippets USING GIN(tags);
