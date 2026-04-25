@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import ClientWalletProvider from "@/components/ClientWalletProvider";
+import { ToastProvider } from "@/components/ToastProvider";
 import "./globals.css";
 import { Navbar } from "@/components/navbar";
 
@@ -39,13 +40,11 @@ export default function RootLayout({
 	return (
 		<html lang='en' suppressHydrationWarning>
 			<body className='font-sans antialiased'>
-
+				<ToastProvider />
 				<ClientWalletProvider>
+					<Navbar />
 					<main>{children}</main>
 				</ClientWalletProvider>
-
-				<Navbar />
-				<main>{children}</main>
 
 				<Analytics />
 			</body>

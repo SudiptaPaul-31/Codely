@@ -17,6 +17,7 @@ import {
 import { Trash2, Copy, Plus } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import Loader from "@/components/ui/loader";
+import { toast } from "sonner";
 
 const LANGUAGES = [
 	"javascript",
@@ -98,12 +99,22 @@ export default function SnippetsPage() {
 					body: JSON.stringify(payload),
 				},
 			);
-			if (!res.ok) throw new Error("Failed to save snippet");
+			if (!res.ok) {
+				const errorData = await res.json().catch(() => ({}));
+				throw new Error(errorData.error || "Failed to save snippet");
+			}
+			toast.success(
+				editingId
+					? "Snippet updated successfully!"
+					: "Snippet created successfully!"
+			);
 			await fetchSnippets();
 			handleCancel();
 		} catch (e: any) {
 			console.error(e);
-			setError(e.message || "Failed to save snippet. Please try again.");
+			const errorMessage = e.message || "Failed to save snippet. Please try again.";
+			setError(errorMessage);
+			toast.error(errorMessage);
 		} finally {
 			setSaving(false);
 		}
@@ -125,18 +136,26 @@ export default function SnippetsPage() {
 		if (!confirm("Delete this snippet?")) return;
 		try {
 			const res = await fetch(`/api/snippets/${id}`, { method: "DELETE" });
-			if (!res.ok) throw new Error("Failed to delete");
+			if (!res.ok) {
+				const errorData = await res.json().catch(() => ({}));
+				throw new Error(errorData.error || "Failed to delete snippet");
+			}
+			toast.success("Snippet deleted successfully!");
 			await fetchSnippets();
-		} catch (e) {
+		} catch (e: any) {
 			console.error(e);
+			const errorMessage = e.message || "Failed to delete snippet";
+			toast.error(errorMessage);
 		}
 	};
 
 	const handleCopy = async (code: string) => {
 		try {
 			await navigator.clipboard.writeText(code);
-		} catch (e) {
+			toast.success("Code copied to clipboard!");
+		} catch (e: any) {
 			console.error(e);
+			toast.error("Failed to copy code to clipboard");
 		}
 	};
 

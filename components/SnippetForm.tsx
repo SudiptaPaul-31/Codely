@@ -86,12 +86,23 @@ export default function SnippetForm({
         },
       );
 
-      if (!res.ok) throw new Error("Failed to save snippet");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save snippet");
+      }
 
+      toast.success(
+        editingId
+          ? "Snippet updated successfully!"
+          : "Snippet created successfully!"
+      );
       await fetchSnippets();
       closeForm();
     } catch (error) {
       console.error("Error saving snippet:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to save snippet";
+      toast.error(errorMessage);
     } finally {
       setSubmitting(false);
     }
