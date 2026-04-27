@@ -2,6 +2,21 @@ import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
 import { CreateSnippetDTO, UpdateSnippetDTO } from "./snippet.validator";
 
+// Pagination options interface
+export interface PaginationOptions {
+  limit: number;
+  offset: number;
+}
+
+// Paginated result interface
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export class SnippetRepository {
   private sql;
 
@@ -10,10 +25,30 @@ export class SnippetRepository {
     this.sql = neon(process.env.DATABASE_URL!);
   }
 
-  async findAll() {
-    const result = await this
-      .sql`SELECT * FROM snippets ORDER BY created_at DESC`;
-    return result as any[];
+  async findAll(options?: PaginationOptions) {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+
+    // Get total count for pagination metadata
+    const countResult = await this.sql`SELECT COUNT(*) as total FROM snippets`;
+    const total = Number(countResult[0]?.total ?? 0);
+
+    // Fetch paginated snippets with consistent ordering by created_at DESC
+    const result = await this.sql`
+      SELECT * FROM snippets 
+      ORDER BY created_at DESC 
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
+    const data = result as any[];
+    
+    return {
+      data,
+      total,
+      limit,
+      offset,
+      hasMore: offset + data.length < total,
+    };
   }
 
   async findById(id: string) {
