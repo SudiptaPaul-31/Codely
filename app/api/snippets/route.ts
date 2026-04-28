@@ -3,16 +3,35 @@ import { SnippetService } from "./snippet.service";
 import { SnippetRepository } from "./snippet.repository";
 import { OwnershipMiddleware } from "./ownership.middleware";
 import { ZodError } from "zod";
+import { rateLimit } from "@/lib/rateLimiter";
+
+// Default pagination settings
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 100;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10;
 
 // Dependency Injection instantiation
 const repository = new SnippetRepository();
 const service = new SnippetService(repository);
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const snippets = await service.getAllSnippets();
-    return NextResponse.json(snippets);
+    const { searchParams } = new URL(req.url);
+    
+    // Parse pagination parameters with validation
+    const limit = Math.min(
+      Math.max(parseInt(searchParams.get("limit") || String(DEFAULT_LIMIT), 10),
+      MAX_LIMIT
+    );
+    const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
+
+    // Handle backward compatibility: if no pagination params, return all (first page)
+    const result = await service.getAllSnippets({ limit, offset });
+    
+    return NextResponse.json(result);
   } catch (error) {
+    console.error("[API] Error fetching snippets:", error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Internal Server Error",

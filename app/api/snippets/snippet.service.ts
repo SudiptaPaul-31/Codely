@@ -1,12 +1,12 @@
-import { SnippetRepository } from "./snippet.repository";
+import { SnippetRepository, PaginationOptions, PaginatedResult } from "./snippet.repository";
 import { createSnippetSchema, updateSnippetSchema } from "./snippet.validator";
 
 export class SnippetService {
   constructor(private snippetRepository: SnippetRepository) {}
 
-  async getAllSnippets() {
+  async getAllSnippets(options?: PaginationOptions): Promise<PaginatedResult<any>> {
     try {
-      return await this.snippetRepository.findAll();
+      return await this.snippetRepository.findAll(options);
     } catch (error) {
       console.error("[Service] Error fetching snippets:", error);
       throw new Error("Failed to fetch snippets");
