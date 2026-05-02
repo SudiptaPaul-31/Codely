@@ -74,6 +74,7 @@ Create a .env file in the root directory:
 
 DATABASE_URL="postgresql://<username>:<password>@<neon-host>/<db-name>?sslmode=require"
 NEXT_PUBLIC_STELLAR_NETWORK=testnet
+STELLAR_SECRET_KEY=<your-secret-key>  # Optional: For signing on-chain transactions
 
 ⚙️ Getting Started
 1️⃣ Clone the Repository
@@ -122,6 +123,48 @@ Snippets are associated with Stellar wallet addresses
 Enables ownership-based access
 
 Foundation for on-chain snippet verification
+
+## 🔐 Blockchain Verification
+
+CodeCodely implements cryptographic hash verification to ensure snippet integrity:
+
+### Features
+
+- **SHA-256 Hash Generation**: Each snippet's content is hashed using SHA-256
+- **Stellar Blockchain Storage**: Hashes are stored on-chain via Stellar transactions
+- **Integrity Verification**: API endpoint to verify snippet hasn't been tampered with
+- **Immutability**: Once stored, hashes cannot be altered
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/snippets/[id]/verify` | POST | Store hash on Stellar blockchain |
+| `/api/snippets/[id]/verify` | GET | Verify snippet integrity |
+| `/api/snippets/verify` | POST | Batch verify multiple snippets |
+| `/api/snippets/verify` | GET | List all verified snippets |
+
+### Database Schema
+
+New fields added to snippets table:
+- `on_chain_hash`: SHA-256 hash of snippet content
+- `transaction_hash`: Stellar transaction hash
+- `verified_at`: Timestamp of on-chain verification
+
+### Usage Example
+
+```bash
+# Verify a snippet (store hash on blockchain)
+curl -X POST http://localhost:3000/api/snippets/[id]/verify
+
+# Check snippet integrity
+curl http://localhost:3000/api/snippets/[id]/verify
+
+# Batch verify multiple snippets
+curl -X POST http://localhost:3000/api/snippets/verify \
+  -H "Content-Type: application/json" \
+  -d '{"snippetIds": ["id1", "id2", "id3"]}'
+```
 
 🎯 Roadmap
 
