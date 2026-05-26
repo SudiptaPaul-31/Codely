@@ -4,6 +4,7 @@ import { SnippetRepository } from "./snippet.repository";
 import { OwnershipMiddleware } from "./ownership.middleware";
 import { ZodError } from "zod";
 import { rateLimit } from "@/lib/rateLimiter";
+import { SearchSnippetsOptions } from "./snippet.repository";
 
 // Default pagination settings
 const DEFAULT_LIMIT = 20;
@@ -15,21 +16,67 @@ const RATE_LIMIT_MAX_REQUESTS = 10;
 const repository = new SnippetRepository();
 const service = new SnippetService(repository);
 
+function parseBoundedInteger(
+  value: string | null,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  const parsed = Number.parseInt(value ?? "", 10);
+
+  if (Number.isNaN(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(parsed, min), max);
+}
+
+function parseSearchOptions(req: NextRequest): SearchSnippetsOptions {
+  const { searchParams } = new URL(req.url);
+  const rawTags = searchParams.get("tags");
+
+  return {
+    limit: parseBoundedInteger(searchParams.get("limit"), DEFAULT_LIMIT, 1, MAX_LIMIT),
+    offset: parseBoundedInteger(searchParams.get("offset"), 0, 0, Number.MAX_SAFE_INTEGER),
+    title: searchParams.get("title")?.trim() || undefined,
+    language: searchParams.get("language")?.trim() || undefined,
+    keyword: searchParams.get("keyword")?.trim() || undefined,
+    tags:
+      rawTags
+        ?.split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean) || undefined,
+  };
+}
+
+function hasSearchFilters(options: SearchSnippetsOptions) {
+  return Boolean(
+    options.title ||
+      options.language ||
+      options.keyword ||
+      (options.tags && options.tags.length > 0),
+  );
+}
+
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    
-    // Parse pagination parameters with validation
-    const limit = Math.min(
-      Math.max(parseInt(searchParams.get("limit") || String(DEFAULT_LIMIT), 10),
-      MAX_LIMIT
-    );
-    const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
+    const options = parseSearchOptions(req);
+    const result = hasSearchFilters(options)
+      ? await service.searchSnippets(options)
+      : await service.getAllSnippets({
+          limit: options.limit,
+          offset: options.offset,
+        });
 
-    // Handle backward compatibility: if no pagination params, return all (first page)
-    const result = await service.getAllSnippets({ limit, offset });
-    
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      filters: {
+        title: options.title ?? null,
+        language: options.language ?? null,
+        tags: options.tags ?? [],
+        keyword: options.keyword ?? null,
+      },
+    });
   } catch (error) {
     console.error("[API] Error fetching snippets:", error);
     return NextResponse.json(

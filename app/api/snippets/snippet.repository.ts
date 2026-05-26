@@ -8,6 +8,13 @@ export interface PaginationOptions {
   offset: number;
 }
 
+export interface SearchSnippetsOptions extends PaginationOptions {
+  title?: string;
+  language?: string;
+  tags?: string[];
+  keyword?: string;
+}
+
 // Paginated result interface
 export interface PaginatedResult<T> {
   data: T[];
@@ -42,6 +49,67 @@ export class SnippetRepository {
 
     const data = result as any[];
     
+    return {
+      data,
+      total,
+      limit,
+      offset,
+      hasMore: offset + data.length < total,
+    };
+  }
+
+  async search(options: SearchSnippetsOptions) {
+    const limit = options.limit;
+    const offset = options.offset;
+    const title = options.title?.trim() || null;
+    const titlePattern = title ? `%${title}%` : null;
+    const language = options.language?.trim() || null;
+    const keyword = options.keyword?.trim() || null;
+    const tags = options.tags?.length ? options.tags : null;
+    const tagsJson = tags ? JSON.stringify(tags) : null;
+
+    const countResult = await this.sql`
+      SELECT COUNT(*) AS total
+      FROM snippets
+      WHERE (${title}::text IS NULL OR title ILIKE ${titlePattern})
+        AND (${language}::text IS NULL OR LOWER(language) = LOWER(${language}))
+        AND (${tagsJson}::jsonb IS NULL OR tags @> ${tagsJson}::jsonb)
+        AND (
+          ${keyword}::text IS NULL
+          OR (
+            setweight(to_tsvector('simple', COALESCE(title, '')), 'A') ||
+            setweight(to_tsvector('simple', COALESCE(description, '')), 'B') ||
+            setweight(to_tsvector('simple', COALESCE(code, '')), 'C') ||
+            setweight(to_tsvector('simple', COALESCE(language, '')), 'B') ||
+            setweight(jsonb_to_tsvector('simple', COALESCE(tags, '[]'::jsonb), '["string"]'), 'B')
+          ) @@ websearch_to_tsquery('simple', ${keyword})
+        )
+    `;
+
+    const total = Number(countResult[0]?.total ?? 0);
+
+    const result = await this.sql`
+      SELECT *
+      FROM snippets
+      WHERE (${title}::text IS NULL OR title ILIKE ${titlePattern})
+        AND (${language}::text IS NULL OR LOWER(language) = LOWER(${language}))
+        AND (${tagsJson}::jsonb IS NULL OR tags @> ${tagsJson}::jsonb)
+        AND (
+          ${keyword}::text IS NULL
+          OR (
+            setweight(to_tsvector('simple', COALESCE(title, '')), 'A') ||
+            setweight(to_tsvector('simple', COALESCE(description, '')), 'B') ||
+            setweight(to_tsvector('simple', COALESCE(code, '')), 'C') ||
+            setweight(to_tsvector('simple', COALESCE(language, '')), 'B') ||
+            setweight(jsonb_to_tsvector('simple', COALESCE(tags, '[]'::jsonb), '["string"]'), 'B')
+          ) @@ websearch_to_tsquery('simple', ${keyword})
+        )
+      ORDER BY created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
+    const data = result as any[];
+
     return {
       data,
       total,
