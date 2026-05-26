@@ -162,9 +162,13 @@ export async function DELETE(
       return ownershipResult.error!;
     }
 
-    await service.deleteSnippet(id);
+    // Use soft delete instead of hard delete
+    await service.deleteSnippet(id, walletAddress);
 
-    return NextResponse.json({ message: "Snippet deleted successfully" });
+    return NextResponse.json({ 
+      message: "Snippet deleted successfully",
+      note: "Snippet moved to trash. You can restore it from the trash section."
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "Snippet not found") {
       return NextResponse.json({ error: "Snippet not found" }, { status: 404 });
