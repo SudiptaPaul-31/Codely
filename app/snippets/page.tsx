@@ -18,6 +18,8 @@ import { Trash2, Copy, Plus } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import Loader from "@/components/ui/loader";
 import { VersionHistoryPanel } from "@/components/VersionHistory";
+import { PermissionsManager } from "@/components/PermissionsManager";
+import { useWallet } from "@/components/WalletConnect";
 
 const LANGUAGES = [
   "javascript",
@@ -43,6 +45,7 @@ interface Snippet {
   code: string;
   language: string;
   tags: string[];
+  owner_wallet_address: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -59,6 +62,7 @@ interface PaginatedResponse {
 const DEFAULT_LIMIT = 20;
 
 export default function SnippetsPage() {
+  const wallet = useWallet();
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -477,6 +481,13 @@ transition-all duration-200"
                         snippetId={snippet.id}
                         onRestore={() => fetchSnippets()}
                       />
+                      {snippet.owner_wallet_address && (
+                        <PermissionsManager
+                          snippetId={snippet.id}
+                          snippetTitle={snippet.title}
+                          ownerWalletAddress={snippet.owner_wallet_address}
+                        />
+                      )}
                       <Button
                         onClick={() => handleEdit(snippet)}
                         size="sm"
