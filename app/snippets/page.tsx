@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,12 +13,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Copy, Plus } from "lucide-react";
+import { Trash2, Copy, Plus, Search, X } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import Loader from "@/components/ui/loader";
 import { VersionHistoryPanel } from "@/components/VersionHistory";
 import { PermissionsManager } from "@/components/PermissionsManager";
 import { useWallet } from "@/components/WalletConnect";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 const LANGUAGES = [
   "javascript",
@@ -60,24 +60,30 @@ interface PaginatedResponse {
 }
 
 const DEFAULT_LIMIT = 20;
+const INITIAL_FORM_DATA = {
+  title: "",
+  description: "",
+  code: "",
+  language: "javascript",
+  tags: "",
+};
 
 export default function SnippetsPage() {
   const wallet = useWallet();
+  const formRef = useRef<HTMLFormElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeSearchQuery, setActiveSearchQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    code: "",
-    language: "javascript",
-    tags: "",
-  });
+  const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,7 +91,31 @@ export default function SnippetsPage() {
     fetchSnippets();
   }, []);
 
-  const fetchSnippets = async (loadMore = false) => {
+  const buildSnippetHeaders = useCallback(
+    (includeJson = false) => {
+      const headers: Record<string, string> = {};
+
+      if (includeJson) {
+        headers["Content-Type"] = "application/json";
+      }
+
+      if (wallet?.publicKey) {
+        headers["x-wallet-address"] = wallet.publicKey;
+      }
+
+      if (wallet?.token) {
+        headers.Authorization = `Bearer ${wallet.token}`;
+      }
+
+      return headers;
+    },
+    [wallet?.publicKey, wallet?.token],
+  );
+
+  const fetchSnippets = async (
+    loadMore = false,
+    query = activeSearchQuery,
+  ) => {
     try {
       if (loadMore) {
         setLoadingMore(true);
@@ -94,7 +124,17 @@ export default function SnippetsPage() {
       }
       
       const currentOffset = loadMore ? offset : 0;
-      const res = await fetch(`/api/snippets?limit=${DEFAULT_LIMIT}&offset=${currentOffset}`);
+      const params = new URLSearchParams({
+        limit: String(DEFAULT_LIMIT),
+        offset: String(currentOffset),
+      });
+      const trimmedQuery = query.trim();
+
+      if (trimmedQuery) {
+        params.set("keyword", trimmedQuery);
+      }
+
+      const res = await fetch(`/api/snippets?${params.toString()}`);
       
       if (!res.ok) throw new Error("Failed to fetch snippets");
       
@@ -123,6 +163,83 @@ export default function SnippetsPage() {
     }
   };
 
+  const runSearch = async (query: string) => {
+    const trimmedQuery = query.trim();
+    setActiveSearchQuery(trimmedQuery);
+    setOffset(0);
+    setHasMore(true);
+    await fetchSnippets(false, trimmedQuery);
+  };
+
+  const handleSearchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runSearch(searchQuery);
+  };
+
+  const handleClearSearch = async () => {
+    setSearchQuery("");
+
+    if (activeSearchQuery) {
+      await runSearch("");
+    }
+
+    searchInputRef.current?.focus();
+  };
+
+  const startCreateSnippet = useCallback(() => {
+    setEditingId(null);
+    setFormData({ ...INITIAL_FORM_DATA });
+    setError(null);
+    setShowForm(true);
+  }, []);
+
+  const focusSearch = useCallback(() => {
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
+  }, []);
+
+  const submitSnippetForm = useCallback(() => {
+    const form = formRef.current;
+
+    if (!form || saving) return;
+
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+      return;
+    }
+
+    form.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
+  }, [saving]);
+
+  const shortcuts = useMemo(
+    () => [
+      {
+        key: "s",
+        enabled: showForm,
+        onKeyDown: submitSnippetForm,
+      },
+      {
+        key: "k",
+        onKeyDown: focusSearch,
+      },
+      {
+        key: "n",
+        onKeyDown: startCreateSnippet,
+      },
+    ],
+    [focusSearch, saving, showForm, startCreateSnippet, submitSnippetForm],
+  );
+
+  useKeyboardShortcuts(shortcuts);
+
+  useEffect(() => {
+    if (showForm) {
+      titleInputRef.current?.focus();
+    }
+  }, [editingId, showForm]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -139,7 +256,7 @@ export default function SnippetsPage() {
         editingId ? `/api/snippets/${editingId}` : "/api/snippets",
         {
           method: editingId ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: buildSnippetHeaders(true),
           body: JSON.stringify(payload),
         },
       );
@@ -173,7 +290,10 @@ export default function SnippetsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this snippet?")) return;
     try {
-      const res = await fetch(`/api/snippets/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/snippets/${id}`, {
+        method: "DELETE",
+        headers: buildSnippetHeaders(),
+      });
       if (!res.ok) throw new Error("Failed to delete");
       
       // Reset pagination and fetch fresh data
@@ -197,13 +317,7 @@ export default function SnippetsPage() {
     setShowForm(false);
     setEditingId(null);
     setError(null);
-    setFormData({
-      title: "",
-      description: "",
-      code: "",
-      language: "javascript",
-      tags: "",
-    });
+    setFormData({ ...INITIAL_FORM_DATA });
   };
 
   return (
@@ -222,13 +336,56 @@ export default function SnippetsPage() {
           <h1 className="text-2xl font-bold text-white">My Snippets</h1>
           {!showForm && (
             <Button
-              onClick={() => setShowForm(true)}
+              onClick={startCreateSnippet}
+              aria-keyshortcuts="Control+N"
               className="rounded-[50px] bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 gap-2"
             >
               <Plus className="w-4 h-4" /> Add Snippet
             </Button>
           )}
         </div>
+
+        <form
+          role="search"
+          onSubmit={handleSearchSubmit}
+          className="mb-8 flex flex-col gap-3 sm:flex-row"
+        >
+          <div className="relative flex-1">
+            <Label htmlFor="snippet-search" className="sr-only">
+              Search snippets
+            </Label>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              ref={searchInputRef}
+              id="snippet-search"
+              type="search"
+              placeholder="Search snippets"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-keyshortcuts="Control+K"
+              className="h-10 border-purple-500/30 bg-slate-800/60 pl-10 text-white placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-500/30"
+            />
+          </div>
+          <div className="flex gap-3">
+            <Button
+              type="submit"
+              variant="outline"
+              className="border-purple-400/50 bg-transparent text-purple-200 hover:bg-purple-400/10"
+            >
+              <Search className="h-4 w-4" /> Search
+            </Button>
+            {activeSearchQuery && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleClearSearch}
+                className="border-slate-600 bg-transparent text-slate-300 hover:bg-slate-800"
+              >
+                <X className="h-4 w-4" /> Clear
+              </Button>
+            )}
+          </div>
+        </form>
 
         {/* Form */}
         {showForm && (
@@ -245,7 +402,7 @@ export default function SnippetsPage() {
             <h2 className="text-2xl font-bold text-white mb-6">
               {editingId ? "Edit Snippet" : "Add New Snippet"}
             </h2>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
               {error && (
                 <div className="p-3 rounded bg-red-500/20 border border-red-500/50 text-red-200 text-sm">
                   {error}
@@ -256,6 +413,7 @@ export default function SnippetsPage() {
                   Title
                 </Label>
                 <Input
+                  ref={titleInputRef}
                   id="title"
                   placeholder="e.g., React useEffect Hook"
                   value={formData.title}
@@ -379,6 +537,7 @@ transition-all duration-200"
                 <Button
                   type="submit"
                   disabled={saving}
+                  aria-keyshortcuts="Control+S"
                   className="bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 min-w-30"
                 >
                   {saving ? (
@@ -414,7 +573,8 @@ transition-all duration-200"
             </p>
             {!showForm && (
               <Button
-                onClick={() => setShowForm(true)}
+                onClick={startCreateSnippet}
+                aria-keyshortcuts="Control+N"
                 className="rounded-[50px] bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0"
               >
                 Create Snippet
