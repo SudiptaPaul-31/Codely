@@ -19,15 +19,26 @@ export class OwnershipMiddleware {
    * Check if the requester is the owner of the snippet
    * @param snippetId - The ID of the snippet to check
    * @param requesterWalletAddress - The wallet address making the request
+   * @param includeDeleted - If true, also check deleted snippets
    * @returns Object with isOwner boolean and error response if not authorized
    */
   async verifyOwnership(
     snippetId: string,
     requesterWalletAddress: string,
+    includeDeleted: boolean = false,
   ): Promise<{ isOwner: boolean; error?: NextResponse }> {
     try {
       // Fetch the snippet
-      const snippet = await this.repository.findById(snippetId);
+      let snippet;
+      if (includeDeleted) {
+        // Get snippet including deleted ones
+        const result = await this.repository["sql"]`
+          SELECT * FROM snippets WHERE id = ${snippetId}
+        `;
+        snippet = result[0];
+      } else {
+        snippet = await this.repository.findById(snippetId);
+      }
 
       if (!snippet) {
         return {

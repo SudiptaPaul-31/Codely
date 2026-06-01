@@ -4,6 +4,7 @@ import { SnippetRepository } from "../app/api/snippets/snippet.repository";
 // Mock the repository
 const mockRepository = {
   findAll: jest.fn(),
+  search: jest.fn(),
   findById: jest.fn(),
   create: jest.fn(),
   update: jest.fn(),
@@ -45,6 +46,42 @@ describe("SnippetService", () => {
       await expect(service.getAllSnippets()).rejects.toThrow(
         "Failed to fetch snippets",
       );
+    });
+  });
+
+  describe("searchSnippets", () => {
+    it("should return filtered snippets", async () => {
+      const filters = {
+        title: "React",
+        language: "typescript",
+        tags: ["frontend"],
+        keyword: "hooks",
+        limit: 10,
+        offset: 0,
+      };
+      const mockResult = {
+        data: [{ id: "1", title: "React Hooks" }],
+        total: 1,
+        limit: 10,
+        offset: 0,
+        hasMore: false,
+      };
+
+      (mockRepository.search as jest.Mock).mockResolvedValue(mockResult);
+
+      const result = await service.searchSnippets(filters);
+      expect(result).toEqual(mockResult);
+      expect(mockRepository.search).toHaveBeenCalledWith(filters);
+    });
+
+    it("should throw error when search fails", async () => {
+      (mockRepository.search as jest.Mock).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      await expect(
+        service.searchSnippets({ limit: 10, offset: 0, keyword: "react" }),
+      ).rejects.toThrow("Failed to search snippets");
     });
   });
 

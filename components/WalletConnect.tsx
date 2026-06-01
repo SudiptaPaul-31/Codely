@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Wallet } from "lucide-react";
 import {
@@ -26,11 +26,28 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [walletName, setWalletName] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+
+  // Load token from localStorage on mount
+  useEffect(() => {
+    const storedToken = localStorage.getItem("authToken");
+    const storedPublicKey = localStorage.getItem("walletAddress");
+    const storedWalletName = localStorage.getItem("walletName");
+
+    if (storedToken && storedPublicKey) {
+      setToken(storedToken);
+      setPublicKey(storedPublicKey);
+      setWalletName(storedWalletName);
+      setConnected(true);
+    }
+  }, []);
 
   const connect = async (walletType: "freighter" | "albedo" | "lobstr") => {
     try {
       setConnecting(true);
       setError(null);
+
+      let pubKey: string | null = null;
 
       // ==========================
       // FREIGHTER
@@ -80,6 +97,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             console.error("[transactions] failed to log wallet_connect", e);
           }
         })();
+        pubKey = await freighter.getPublicKey();
+        if (!pubKey)
+          throw new Error("Failed to retrieve public key from Freighter.");
       }
 
       // ==========================
@@ -112,6 +132,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             console.error("[transactions] failed to log wallet_connect", e);
           }
         })();
+        pubKey = result.pubkey;
       }
 
       // ==========================
@@ -122,6 +143,66 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           "Lobstr wallet integration coming soon (requires WalletConnect).",
         );
       }
+
+      if (!pubKey) {
+        throw new Error("Failed to get wallet public key");
+      }
+
+      // ====== Signature-Based Authentication ======
+      // Step 1: Get nonce from server
+      const nonceRes = await fetch("/api/auth/nonce");
+      if (!nonceRes.ok) {
+        throw new Error("Failed to get authentication nonce");
+      }
+      const { nonce, message } = await nonceRes.json();
+
+      // Step 2: Request wallet to sign the nonce
+      let signature: string | null = null;
+
+      if (walletType === "freighter") {
+        let freighter = window.freighter || window.freighterApi;
+        signature = await freighter.signMessage(message, {
+          domain: "codely.app",
+        });
+      } else if (walletType === "albedo") {
+        const albedo = await import("@albedo-link/intent");
+        const result = await albedo.default.signMessage({
+          message,
+        });
+        signature = result.signature;
+      }
+
+      if (!signature) {
+        throw new Error("Failed to sign message");
+      }
+
+      // Step 3: Verify signature on server and get JWT
+      const verifyRes = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicKey: pubKey,
+          signature,
+          nonce,
+        }),
+      });
+
+      if (!verifyRes.ok) {
+        const errorData = await verifyRes.json();
+        throw new Error(errorData.error || "Authentication failed");
+      }
+
+      const { token: authToken } = await verifyRes.json();
+
+      // Store token and user info
+      localStorage.setItem("authToken", authToken);
+      localStorage.setItem("walletAddress", pubKey);
+      localStorage.setItem("walletName", walletName || walletType);
+
+      setToken(authToken);
+      setPublicKey(pubKey);
+      setWalletName(walletName || walletType);
+      setConnected(true);
     } catch (err: any) {
       setError(err?.message || "Connection failed");
       console.error("Wallet connection error:", err);
@@ -131,10 +212,29 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const disconnect = () => {
+  const disconnect = async () => {
+    try {
+      // Logout on server
+      if (token) {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        }).catch(console.error);
+      }
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+
+    // Clear local state
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("walletAddress");
+    localStorage.removeItem("walletName");
+
     setConnected(false);
     setPublicKey(null);
     setWalletName(null);
+    setToken(null);
     setError(null);
   };
 
@@ -149,11 +249,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       walletName,
       connecting,
       error,
+      token,
       connect,
       disconnect,
       clearError,
     }),
     [connected, publicKey, walletName, connecting, error],
+    [connected, publicKey, walletName, connecting, error, token],
   );
 
   return (

@@ -16,6 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Navbar } from "@/components/navbar";
+import { WalletButton } from "@/components/WalletConnect";
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -175,6 +176,7 @@ export default function LandingPage() {
                     How It Works
                   </Button>
                 </Link>
+                <WalletButton />
               </div>
 
               {/* Trust signals */}

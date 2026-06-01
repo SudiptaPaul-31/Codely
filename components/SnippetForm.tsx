@@ -15,8 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LANGUAGES } from "@/lib/languages";
-import { fetchSnippets } from "@/lib/utils";
-import React, { SetStateAction } from "react";
+import React, { useEffect, useState } from "react";
 import { SnippetFormValues } from "@/types/type";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { snippetSchema } from "@/validiation/snippet-form-validiation";
@@ -24,18 +23,26 @@ import { toast } from "sonner";
 
 interface SnippetFormProps {
   editingId: string | null;
-  submitting: boolean;
-  setSubmitting: React.Dispatch<SetStateAction<boolean>>;
+  initialValues?: Partial<SnippetFormValues>;
   closeForm: () => void;
+  onSuccess: () => Promise<void>;
 }
 
 export default function SnippetForm({
   editingId,
-  setSubmitting,
+  initialValues,
   closeForm,
-  submitting,
+  onSuccess,
 }: SnippetFormProps) {
-  const form = useForm<SnippetFormValues>({
+  const [submitting, setSubmitting] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    formState: { errors },
+  } = useForm<SnippetFormValues>({
     resolver: zodResolver(snippetSchema),
     defaultValues: {
       title: "",
@@ -46,22 +53,17 @@ export default function SnippetForm({
     },
   });
 
-  const {
-    register,
-    handleSubmit,
-    control,
-    formState: { errors },
-  } = form;
+  useEffect(() => {
+    reset({
+      title: initialValues?.title ?? "",
+      description: initialValues?.description ?? "",
+      code: initialValues?.code ?? "",
+      language: initialValues?.language ?? "javascript",
+      tags: initialValues?.tags ?? "",
+    });
+  }, [initialValues, reset]);
 
   const onSubmit = async (data: SnippetFormValues) => {
-    // Mock isConnected state - replace with real state later
-    const isConnected = false;
-
-    if (!isConnected) {
-      toast.error("Please connect your wallet before submitting.");
-      return;
-    }
-
     try {
       setSubmitting(true);
       const payload = {
@@ -88,10 +90,11 @@ export default function SnippetForm({
 
       if (!res.ok) throw new Error("Failed to save snippet");
 
-      await fetchSnippets();
+      await onSuccess();
       closeForm();
     } catch (error) {
       console.error("Error saving snippet:", error);
+      toast.error("Failed to save snippet. Please try again.");
     } finally {
       setSubmitting(false);
     }
