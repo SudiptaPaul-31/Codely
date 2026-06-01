@@ -3,6 +3,7 @@
 import { createContext, useContext, useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Wallet } from "lucide-react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -28,18 +29,42 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
-  // Load token from localStorage on mount
+  // Load and verify token from localStorage on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem("authToken");
-    const storedPublicKey = localStorage.getItem("walletAddress");
-    const storedWalletName = localStorage.getItem("walletName");
+    const initSession = async () => {
+      const storedToken = localStorage.getItem("authToken");
+      const storedPublicKey = localStorage.getItem("walletAddress");
+      const storedWalletName = localStorage.getItem("walletName");
 
-    if (storedToken && storedPublicKey) {
-      setToken(storedToken);
-      setPublicKey(storedPublicKey);
-      setWalletName(storedWalletName);
-      setConnected(true);
-    }
+      if (storedToken && storedPublicKey) {
+        setConnecting(true);
+        try {
+          const res = await fetch("/api/auth/session", {
+            headers: { Authorization: `Bearer ${storedToken}` },
+          });
+
+          if (res.ok) {
+            setToken(storedToken);
+            setPublicKey(storedPublicKey);
+            setWalletName(storedWalletName);
+            setConnected(true);
+          } else {
+            // Session expired or invalid
+            localStorage.removeItem("authToken");
+            localStorage.removeItem("walletAddress");
+            localStorage.removeItem("walletName");
+            setConnected(false);
+            toast.error("Session expired. Please reconnect your wallet.");
+          }
+        } catch (error) {
+          console.error("Session verification failed:", error);
+        } finally {
+          setConnecting(false);
+        }
+      }
+    };
+
+    initSession();
   }, []);
 
   const connect = async (walletType: "freighter" | "albedo" | "lobstr") => {

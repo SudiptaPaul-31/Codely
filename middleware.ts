@@ -25,6 +25,7 @@ export async function middleware(req: NextRequest) {
     "/api/snippets", // All snippet operations
     "/api/profile", // Profile routes
     "/dashboard", // Dashboard routes
+    "/api/auth/session", // Session verification
   ];
 
   // Check if current route is protected
