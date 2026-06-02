@@ -3,7 +3,7 @@ import crypto from "crypto";
 
 const sql = neon(process.env.DATABASE_URL!);
 
-export type ActivityAction = "DELETE" | "RESTORE" | "CREATE" | "UPDATE";
+export type ActivityAction = "DELETE" | "RESTORE" | "CREATE" | "UPDATE" | "SHARE" | "REVOKESHARE";
 
 export interface ActivityLogEntry {
   id: string;
