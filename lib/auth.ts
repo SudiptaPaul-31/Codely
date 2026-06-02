@@ -1,5 +1,4 @@
 import { neon } from "@neondatabase/serverless";
-import crypto from "crypto";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -33,18 +32,12 @@ export async function generateJWT(walletAddress: string): Promise<string> {
   const headerEncoded = base64UrlEncode(JSON.stringify(header));
   const payloadEncoded = base64UrlEncode(JSON.stringify(payload));
 
-  const signature = crypto
-    .createHmac("sha256", JWT_SECRET)
-    .update(`${headerEncoded}.${payloadEncoded}`)
-    .digest("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
+  const signature = await signHmacSha256(JWT_SECRET, `${headerEncoded}.${payloadEncoded}`);
 
   const token = `${headerEncoded}.${payloadEncoded}.${signature}`;
 
   // Store token hash in database for session management
-  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const tokenHash = await sha256Hex(token);
 
   const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
@@ -64,11 +57,11 @@ export async function generateJWT(walletAddress: string): Promise<string> {
 /**
  * Verify and decode a JWT token
  */
-export function verifyJWT(token: string): {
+export async function verifyJWT(token: string): Promise<{
   valid: boolean;
   payload?: any;
   error?: string;
-} {
+}> {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) {
@@ -78,13 +71,7 @@ export function verifyJWT(token: string): {
     const [headerEncoded, payloadEncoded, signatureProvided] = parts;
 
     // Verify signature
-    const signature = crypto
-      .createHmac("sha256", JWT_SECRET)
-      .update(`${headerEncoded}.${payloadEncoded}`)
-      .digest("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=/g, "");
+    const signature = await signHmacSha256(JWT_SECRET, `${headerEncoded}.${payloadEncoded}`);
 
     if (signature !== signatureProvided) {
       return { valid: false, error: "Invalid signature" };
@@ -107,7 +94,11 @@ export function verifyJWT(token: string): {
  * Generate a unique nonce for login
  */
 export async function generateNonce(): Promise<string> {
-  const nonce = crypto.randomBytes(32).toString("hex");
+  const nonceBytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(nonceBytes);
+  const nonce = Array.from(nonceBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
   const expiresAt = new Date(Date.now() + NONCE_EXPIRY);
 
   try {
@@ -184,33 +175,7 @@ export async function getOrCreateUser(walletAddress: string) {
   }
 }
 
-/**
- * Verify wallet signature using Stellar SDK
- */
-export async function verifyWalletSignature(
-  message: string,
-  signature: string,
-  publicKey: string,
-): Promise<{ valid: boolean; error?: string }> {
-  try {
-    // Import Stellar SDK
-    const StellarSdk = require("stellar-sdk");
-
-    // Verify the signature
-    const keypair = StellarSdk.Keypair.fromPublicKey(publicKey);
-    const isValid = keypair.verify(message, signature, "utf8");
-
-    if (!isValid) {
-      return { valid: false, error: "Invalid signature" };
-    }
-
-    return { valid: true };
-  } catch (error: any) {
-    console.error("Signature verification error:", error);
-    return { valid: false, error: error.message };
-  }
-}
-
+// Moved verifyWalletSignature to stellar-auth.ts to prevent Edge runtime errors
 // ====== Helper Functions ======
 
 function base64UrlEncode(str: string): string {
@@ -229,7 +194,54 @@ function base64UrlDecode(str: string): string {
     decoded += "=";
   }
 
-  return Buffer.from(decoded, "base64").toString();
+  // Use standard atob instead of Buffer for Edge compatibility
+  return decodeURIComponent(
+    atob(decoded)
+      .split("")
+      .map(function (c) {
+        return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+      })
+      .join("")
+  );
+}
+
+// Edge-compatible HMAC-SHA256 signature
+async function signHmacSha256(secret: string, data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await globalThis.crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signatureBuffer = await globalThis.crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(data)
+  );
+  return arrayBufferToBase64Url(signatureBuffer);
+}
+
+// Edge-compatible SHA-256 hex hash
+export async function sha256Hex(data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", encoder.encode(data));
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
 /**

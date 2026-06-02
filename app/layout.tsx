@@ -2,6 +2,7 @@ import React from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { Toaster } from "sonner";
 import ClientWalletProvider from "@/components/ClientWalletProvider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -42,6 +43,7 @@ export default function RootLayout({
 				<ClientWalletProvider>
 					{children}
 				</ClientWalletProvider>
+				<Toaster position="top-right" richColors />
 				<Analytics />
 				<Toaster expand closeButton />
 			</body>

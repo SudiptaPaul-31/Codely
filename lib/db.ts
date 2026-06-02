@@ -187,3 +187,150 @@ export async function restoreVersion(
     throw error;
   }
 }
+
+// ============ NFT Functions ============
+
+export async function updateSnippetNft(
+  id: string,
+  txHash: string,
+  metadata: object,
+) {
+  try {
+    const result = await sql`
+      UPDATE snippets
+      SET nft_transaction_hash = ${txHash},
+          nft_metadata = ${JSON.stringify(metadata)},
+          updated_at = ${new Date()}
+      WHERE id = ${id}
+      RETURNING *
+    `;
+    return result[0] as any;
+  } catch (error) {
+    console.error("Error updating snippet NFT:", error);
+    throw error;
+  }
+}
+
+// ============ On-Chain Timestamp Verification Functions ============
+
+/**
+ * Fetch a snippet including its on-chain verification fields.
+ */
+export async function getSnippetWithHash(id: string) {
+  try {
+    const result = await sql`
+      SELECT id, title, description, code, language, tags,
+             owner_wallet_address, created_at, updated_at,
+             on_chain_hash, transaction_hash, verified_at
+      FROM snippets
+      WHERE id = ${id}
+    `;
+    return (result[0] as any) || null;
+  } catch (error) {
+    console.error("Error fetching snippet with hash:", error);
+    throw error;
+  }
+}
+
+/**
+ * Persist the on-chain hash and Stellar transaction hash for a snippet.
+ * Immutability: if on_chain_hash is already set, this call is rejected
+ * to prevent overwriting an existing proof-of-existence record.
+ */
+export async function storeSnippetHash(
+  id: string,
+  onChainHash: string,
+  transactionHash: string,
+) {
+  try {
+    // Guard: do not overwrite an existing verified record
+    const existing = await sql`
+      SELECT on_chain_hash FROM snippets WHERE id = ${id}
+    `;
+    if (existing[0]?.on_chain_hash) {
+      throw new Error(
+        "Snippet is already verified on-chain. Timestamps are immutable.",
+      );
+    }
+
+    const verifiedAt = new Date();
+    const result = await sql`
+      UPDATE snippets
+      SET on_chain_hash    = ${onChainHash},
+          transaction_hash = ${transactionHash},
+          verified_at      = ${verifiedAt}
+      WHERE id = ${id}
+      RETURNING id, on_chain_hash, transaction_hash, verified_at
+    `;
+    return result[0] as any;
+  } catch (error) {
+    console.error("Error storing snippet hash:", error);
+    throw error;
+  }
+}
+
+/**
+ * Compare the snippet's current content hash against the stored on-chain hash.
+ */
+export async function verifySnippetIntegrity(
+  id: string,
+  title: string,
+  description: string,
+  code: string,
+  language: string,
+  tags: string[],
+): Promise<{ isValid: boolean; message: string }> {
+  try {
+    const { generateSnippetHash } = await import("@/lib/hash");
+
+    const snippet = await sql`
+      SELECT on_chain_hash FROM snippets WHERE id = ${id}
+    `;
+
+    if (!snippet[0]?.on_chain_hash) {
+      return {
+        isValid: false,
+        message: "Snippet has not been verified on-chain yet.",
+      };
+    }
+
+    const currentHash = generateSnippetHash(
+      title,
+      description,
+      code,
+      language,
+      tags,
+    );
+
+    const isValid = currentHash === snippet[0].on_chain_hash;
+
+    return {
+      isValid,
+      message: isValid
+        ? "Snippet integrity verified — content matches the on-chain record."
+        : "Integrity check failed — snippet content has been modified since on-chain verification.",
+    };
+  } catch (error) {
+    console.error("Error verifying snippet integrity:", error);
+    throw error;
+  }
+}
+
+/**
+ * Return all snippets that have been verified on the Stellar blockchain.
+ */
+export async function getVerifiedSnippets() {
+  try {
+    const result = await sql`
+      SELECT id, title, language, on_chain_hash, transaction_hash, verified_at, created_at
+      FROM snippets
+      WHERE on_chain_hash IS NOT NULL
+        AND is_deleted = false
+      ORDER BY verified_at DESC
+    `;
+    return result as any[];
+  } catch (error) {
+    console.error("Error fetching verified snippets:", error);
+    throw error;
+  }
+}

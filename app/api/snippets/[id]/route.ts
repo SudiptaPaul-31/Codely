@@ -10,6 +10,7 @@ import {
 } from "@/lib/db";
 import { canView, canEdit } from "@/lib/permissions.service";
 import { ZodError } from "zod";
+import { appendActivityLog, extractIp, extractUserAgent } from "@/lib/activity-logger";
 
 // Dependency Injection instantiation
 const repository = new SnippetRepository();
@@ -107,12 +108,22 @@ export async function PUT(
       }
 
       const restored = await restoreVersion(versionId, editorId || null);
+
+      // Log the restore action
+      await appendActivityLog("snippet.restored", "snippet", {
+        actorWallet: await OwnershipMiddleware.extractWalletAddress(req),
+        resourceId:  id,
+        metadata:    { versionId, editorId: editorId || null },
+        ipAddress:   extractIp(req.headers),
+        userAgent:   extractUserAgent(req.headers),
+      });
+
       return NextResponse.json(restored);
     }
 
     // Default: update snippet via service
-    // Extract wallet address and verify ownership or edit permission
-    const walletAddress = OwnershipMiddleware.extractWalletAddress(req);
+    // Extract wallet address and verify ownership
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
 
     if (!walletAddress) {
       return NextResponse.json(
@@ -132,6 +143,15 @@ export async function PUT(
 
     const body = await req.json();
     const snippet = await service.updateSnippet(id, body);
+
+    // Log the update
+    await appendActivityLog("snippet.updated", "snippet", {
+      actorWallet: walletAddress,
+      resourceId:  id,
+      metadata:    { title: snippet.title, language: snippet.language },
+      ipAddress:   extractIp(req.headers),
+      userAgent:   extractUserAgent(req.headers),
+    });
 
     return NextResponse.json(snippet);
   } catch (error) {
@@ -160,7 +180,7 @@ export async function DELETE(
     const { id } = await params;
 
     // Extract wallet address and verify ownership
-    const walletAddress = OwnershipMiddleware.extractWalletAddress(req);
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
 
     if (!walletAddress) {
       return NextResponse.json(
@@ -182,10 +202,16 @@ export async function DELETE(
     // Use soft delete instead of hard delete
     await service.deleteSnippet(id, walletAddress);
 
-    return NextResponse.json({ 
-      message: "Snippet deleted successfully",
-      note: "Snippet moved to trash. You can restore it from the trash section."
+    // Log the deletion
+    await appendActivityLog("snippet.deleted", "snippet", {
+      actorWallet: walletAddress,
+      resourceId:  id,
+      metadata:    {},
+      ipAddress:   extractIp(req.headers),
+      userAgent:   extractUserAgent(req.headers),
     });
+
+    return NextResponse.json({ message: "Snippet deleted successfully" });
   } catch (error) {
     if (error instanceof Error && error.message === "Snippet not found") {
       return NextResponse.json({ error: "Snippet not found" }, { status: 404 });
