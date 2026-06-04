@@ -1,13 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { SnippetService } from "../snippet.service";
-import { SnippetRepository } from "../snippet.repository";
-import { OwnershipMiddleware } from "../ownership.middleware";
 import {
   createSnippetVersion,
   getVersionHistory,
   getVersionById,
   restoreVersion,
+  createTransaction,
 } from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
+import { SnippetService } from "../snippet.service";
+import { SnippetRepository } from "../snippet.repository";
+import { OwnershipMiddleware } from "../ownership.middleware";
 import { canView, canEdit } from "@/lib/permissions.service";
 import { ZodError } from "zod";
 import { appendActivityLog, extractIp, extractUserAgent } from "@/lib/activity-logger";
@@ -67,7 +68,10 @@ export async function GET(
       const allowed = await canView(id, walletAddress);
       if (!allowed) {
         return NextResponse.json(
-          { error: "Forbidden", message: "You do not have view access to this snippet." },
+          {
+            error: "Forbidden",
+            message: "You do not have view access to this snippet.",
+          },
           { status: 403 },
         );
       }
@@ -109,6 +113,19 @@ export async function PUT(
 
       const restored = await restoreVersion(versionId, editorId || null);
 
+      // Log restore action if wallet provided
+      if (req.headers.get("x-wallet-address")) {
+        try {
+          await createTransaction(
+            req.headers.get("x-wallet-address")!,
+            "version_restore",
+            `Restored version ${versionId} for snippet ${restored.snippet_id}`,
+            { versionId, snippetId: restored.snippet_id },
+          );
+        } catch (err) {
+          console.error("[transactions] Failed to log version_restore:", err);
+        }
+      }
       // Log the restore action
       await appendActivityLog("snippet.restored", "snippet", {
         actorWallet: await OwnershipMiddleware.extractWalletAddress(req),
@@ -136,7 +153,10 @@ export async function PUT(
     const editAllowed = await canEdit(id, walletAddress);
     if (!editAllowed) {
       return NextResponse.json(
-        { error: "Forbidden", message: "You do not have edit access to this snippet." },
+        {
+          error: "Forbidden",
+          message: "You do not have edit access to this snippet.",
+        },
         { status: 403 },
       );
     }
@@ -144,6 +164,19 @@ export async function PUT(
     const body = await req.json();
     const snippet = await service.updateSnippet(id, body);
 
+    // Log update
+    if (walletAddress) {
+      try {
+        await createTransaction(
+          walletAddress,
+          "snippet_update",
+          `Updated snippet ${id}`,
+          { snippetId: id },
+        );
+      } catch (err) {
+        console.error("[transactions] Failed to log snippet_update:", err);
+      }
+    }
     // Log the update
     await appendActivityLog("snippet.updated", "snippet", {
       actorWallet: walletAddress,
@@ -202,6 +235,23 @@ export async function DELETE(
     // Use soft delete instead of hard delete
     await service.deleteSnippet(id, walletAddress);
 
+    // Log delete
+    if (walletAddress) {
+      try {
+        await createTransaction(
+          walletAddress,
+          "snippet_delete",
+          `Deleted snippet ${id}`,
+          { snippetId: id },
+        );
+      } catch (err) {
+        console.error("[transactions] Failed to log snippet_delete:", err);
+      }
+    }
+
+    return NextResponse.json({
+      message: "Snippet deleted successfully",
+      note: "Snippet moved to trash. You can restore it from the trash section.",
     // Log the deletion
     await appendActivityLog("snippet.deleted", "snippet", {
       actorWallet: walletAddress,

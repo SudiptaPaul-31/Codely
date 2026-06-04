@@ -74,6 +74,30 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         pubKey = await freighter.getPublicKey();
         if (!pubKey)
           throw new Error("Failed to retrieve public key from Freighter.");
+
+        setPublicKey(pubKey);
+        setWalletName("Freighter");
+        setConnected(true);
+
+        // Log connection to server (best-effort)
+        (async () => {
+          try {
+            await fetch("/api/transactions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-wallet-address": pubKey,
+              },
+              body: JSON.stringify({
+                type: "wallet_connect",
+                description: `Connected via freighter`,
+                metadata: { walletType: "freighter" },
+              }),
+            });
+          } catch (e) {
+            console.error("[transactions] failed to log wallet_connect", e);
+          }
+        })();
       }
 
       // ==========================
@@ -82,6 +106,30 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       else if (walletType === "albedo") {
         const albedo = await import("@albedo-link/intent");
         const result = await albedo.default.publicKey({});
+
+        setPublicKey(result.pubkey);
+        setWalletName("Albedo");
+        setConnected(true);
+
+        // Log connection to server (best-effort)
+        (async () => {
+          try {
+            await fetch("/api/transactions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-wallet-address": result.pubkey,
+              },
+              body: JSON.stringify({
+                type: "wallet_connect",
+                description: `Connected via albedo`,
+                metadata: { walletType: "albedo" },
+              }),
+            });
+          } catch (e) {
+            console.error("[transactions] failed to log wallet_connect", e);
+          }
+        })();
         pubKey = result.pubkey;
       }
 
@@ -204,6 +252,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       disconnect,
       clearError,
     }),
+    [connected, publicKey, walletName, connecting, error],
     [connected, publicKey, walletName, connecting, error, token],
   );
 
