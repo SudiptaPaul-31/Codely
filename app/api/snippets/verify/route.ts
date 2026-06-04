@@ -1,116 +1,114 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getVerifiedSnippets } from '@/lib/db';
-import { generateBatchHash } from '@/lib/hash';
-import { submitBatchHashToStellar } from '@/lib/stellar';
+import { NextRequest, NextResponse } from "next/server";
+import { VerificationService } from "../verification.service";
+import { VerificationRepository } from "../verification.repository";
+import { verifySnippetSchema } from "../verification.validator";
+import { ZodError } from "zod";
+import { rateLimit } from "@/lib/rateLimiter";
+import { ActivityLogger } from "@/lib/activity-logger";
+
+// Rate limiting constants
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 100;
+
+// Dependency Injection instantiation
+const repository = new VerificationRepository();
+const service = new VerificationService(repository);
+const activityLogger = new ActivityLogger();
 
 /**
- * POST /api/snippets/verify
- * Batch verify multiple snippets by storing their hashes on Stellar
- * This is more efficient than verifying one at a time
- * 
- * Body: { snippetIds: string[], secretKey?: string }
+ * Parse verification request from JSON body
  */
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { snippetIds, secretKey } = body;
-    
-    if (!snippetIds || !Array.isArray(snippetIds) || snippetIds.length === 0) {
-      return NextResponse.json(
-        { error: 'Invalid request: snippetIds array is required' },
-        { status: 400 }
-      );
-    }
-    
-    // Get all snippets to generate hashes
-    const { getSnippetById } = await import('@/lib/db');
-    const { generateSnippetHash } = await import('@/lib/hash');
-    
-    const snippetsWithHashes = [];
-    const errors = [];
-    
-    for (const snippetId of snippetIds) {
-      try {
-        const snippet = await getSnippetById(snippetId);
-        if (snippet) {
-          const hash = generateSnippetHash(
-            snippet.title,
-            snippet.description || '',
-            snippet.code,
-            snippet.language,
-            snippet.tags || []
-          );
-          snippetsWithHashes.push({ id: snippetId, hash });
-        } else {
-          errors.push({ id: snippetId, error: 'Snippet not found' });
-        }
-      } catch (err) {
-        errors.push({ id: snippetId, error: 'Failed to generate hash' });
-      }
-    }
-    
-    if (snippetsWithHashes.length === 0) {
-      return NextResponse.json(
-        { error: 'No valid snippets found', errors },
-        { status: 400 }
-      );
-    }
-    
-    // Submit batch hash to Stellar
-    const stellarSecretKey = secretKey || process.env.STELLAR_SECRET_KEY || '';
-    const stellarResult = await submitBatchHashToStellar(
-      stellarSecretKey,
-      snippetsWithHashes
-    );
-    
-    if (!stellarResult.success) {
-      return NextResponse.json(
-        { error: 'Failed to submit batch to Stellar blockchain', details: stellarResult.error },
-        { status: 500 }
-      );
-    }
-    
-    return NextResponse.json({
-      success: true,
-      message: `Verified ${snippetsWithHashes.length} snippets on Stellar blockchain`,
-      data: {
-        verifiedCount: snippetsWithHashes.length,
-        transactionHash: stellarResult.transactionHash,
-        batchHash: stellarResult.memo,
-        errors: errors.length > 0 ? errors : undefined
-      }
-    });
-  } catch (error) {
-    console.error('[v0] Error batch verifying snippets:', error);
-    return NextResponse.json(
-      { error: 'Failed to batch verify snippets' },
-      { status: 500 }
-    );
-  }
+async function parseVerifyRequest(req: NextRequest): Promise<any> {
+  return await req.json();
 }
 
 /**
- * GET /api/snippets/verify
- * Get all verified snippets
+ * Extract client IP address from request headers
  */
-export async function GET() {
+function extractIpAddress(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
+/**
+ * POST /api/snippets/verify
+ * Verify ownership of a snippet by validating cryptographic signature
+ */
+export async function POST(req: NextRequest) {
   try {
-    const verifiedSnippets = await getVerifiedSnippets();
-    
-    return NextResponse.json({
-      verifiedCount: verifiedSnippets.length,
-      snippets: verifiedSnippets.map(s => ({
-        id: s.id,
-        title: s.title,
-        onChainHash: s.on_chain_hash,
-        transactionHash: s.transaction_hash,
-        verifiedAt: s.verified_at
-      }))
+    // Extract client IP for rate limiting and logging
+    const ip = extractIpAddress(req);
+
+    // Apply rate limiting
+    const limit = rateLimit(`verify-snippet:${ip}`, {
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      max: RATE_LIMIT_MAX_REQUESTS,
     });
+
+    if (!limit.allowed) {
+      console.warn("[security] Snippet verification rate limit exceeded:", {
+        ip,
+      });
+
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          limit: RATE_LIMIT_MAX_REQUESTS,
+          window: `${RATE_LIMIT_WINDOW_MS / 1000}s`,
+        },
+        { status: 429 }
+      );
+    }
+
+    // Parse request body
+    const body = await parseVerifyRequest(req);
+
+    // Validate request body using schema
+    const validatedData = verifySnippetSchema.parse(body);
+
+    // Call service to verify ownership
+    const verificationRecord = await service.verifyOwnership(
+      validatedData.snippetId,
+      validatedData.walletAddress,
+      validatedData.signature,
+      validatedData.message,
+      ip
+    );
+
+    // Log verification attempt
+    await activityLogger.log({
+      action: "snippet_verification_success",
+      snippetId: validatedData.snippetId,
+      walletAddress: validatedData.walletAddress,
+      ipAddress: ip,
+      timestamp: new Date(),
+    });
+
+    console.log(
+      `[API] Snippet verification successful for snippet: ${validatedData.snippetId}`
+    );
+
+    return NextResponse.json(verificationRecord, { status: 201 });
   } catch (error) {
-    console.error('[v0] Error fetching verified snippets:', error);
+    if (error instanceof ZodError) {
+      console.error("[API] Validation error in verify endpoint:", error.errors);
+      return NextResponse.json(
+        { error: "Validation failed", details: error.errors },
+        { status: 400 }
+      );
+    }
+
+    const errorMessage =
+      error instanceof Error ? error.message : "Internal Server Error";
+    console.error("[API] Error verifying snippet:", errorMessage);
+
     return NextResponse.json(
-      { error: 'Failed to fetch verified snippets' },
+      {
+        error: errorMessage,
+      },
       { status: 500 }
     );
   }

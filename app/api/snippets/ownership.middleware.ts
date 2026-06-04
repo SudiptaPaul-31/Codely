@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SnippetRepository } from "./snippet.repository";
+import { verifyJWT } from "@/lib/auth";
 
 /**
  * Ownership Middleware
@@ -101,7 +102,7 @@ export class OwnershipMiddleware {
    * In a real implementation, this would come from authenticated session/JWT
    * For now, we expect it to be passed in a custom header
    */
-  static extractWalletAddress(req: NextRequest): string | null {
+  static async extractWalletAddress(req: NextRequest): Promise<string | null> {
     // Try to get from custom header (set by client after wallet connection)
     const walletAddress = req.headers.get("x-wallet-address");
 
@@ -111,6 +112,26 @@ export class OwnershipMiddleware {
       walletAddress.length >= 56
     ) {
       return walletAddress;
+    }
+
+    // Fallback to JWT payload wallet if header is not provided.
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return null;
+    }
+
+    const token = authHeader.substring(7);
+    const verification = await verifyJWT(token);
+    const jwtWallet = verification.valid
+      ? verification.payload?.walletAddress || verification.payload?.sub
+      : null;
+
+    if (
+      typeof jwtWallet === "string" &&
+      jwtWallet.startsWith("G") &&
+      jwtWallet.length >= 56
+    ) {
+      return jwtWallet;
     }
 
     return null;
@@ -134,7 +155,7 @@ export function withOwnershipCheck(
     const { id } = await params;
 
     // Extract wallet address from request
-    const walletAddress = OwnershipMiddleware.extractWalletAddress(req);
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
 
     if (!walletAddress) {
       return NextResponse.json(
