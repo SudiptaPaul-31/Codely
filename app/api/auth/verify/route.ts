@@ -3,8 +3,9 @@ import {
   verifyNonce,
   getOrCreateUser,
   generateJWT,
-  verifyWalletSignature,
 } from "@/lib/auth";
+import { verifyWalletSignature } from "@/lib/stellar-auth";
+import { appendActivityLog, extractIp, extractUserAgent } from "@/lib/activity-logger";
 
 interface VerifyRequest {
   publicKey: string;
@@ -58,6 +59,14 @@ export async function POST(req: NextRequest) {
 
     // Generate JWT token
     const token = await generateJWT(publicKey);
+
+    await appendActivityLog("wallet.connected", "wallet", {
+      actorWallet: publicKey,
+      resourceId: publicKey,
+      metadata: { authMethod: "signature_nonce" },
+      ipAddress: extractIp(req.headers),
+      userAgent: extractUserAgent(req.headers),
+    });
 
     // Return token and user info
     return NextResponse.json(

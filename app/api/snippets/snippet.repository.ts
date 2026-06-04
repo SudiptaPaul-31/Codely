@@ -301,4 +301,22 @@ export class SnippetRepository {
     `;
     return result[0] || null;
   }
+
+  /**
+   * Return all unique tags across non-deleted snippets, with usage counts.
+   * Unnests the jsonb tags array so each tag is counted individually.
+   */
+  async findAllTags(): Promise<Array<{ tag: string; count: number }>> {
+    const result = await this.sql`
+      SELECT tag, COUNT(*)::int AS count
+      FROM snippets, jsonb_array_elements_text(
+        CASE WHEN jsonb_typeof(tags) = 'array' THEN tags ELSE '[]'::jsonb END
+      ) AS tag
+      WHERE is_deleted = false
+        AND tags IS NOT NULL
+      GROUP BY tag
+      ORDER BY count DESC, tag ASC
+    `;
+    return result as any[];
+  }
 }
