@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyJWT } from "@/lib/auth";
+import { verifyJWT, sha256Hex } from "@/lib/auth";
 import { neon } from "@neondatabase/serverless";
-import crypto from "crypto";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -23,8 +22,9 @@ export async function middleware(req: NextRequest) {
   // Define protected routes that require authentication
   const protectedRoutes = [
     "/api/snippets", // All snippet operations
-    "/api/profile", // Profile routes
-    "/dashboard", // Dashboard routes
+    "/api/profile",  // Profile routes
+    "/dashboard",    // Dashboard routes
+    "/api/logs",     // Activity logs (auth required for all methods)
   ];
 
   // Check if current route is protected
@@ -39,6 +39,11 @@ export async function middleware(req: NextRequest) {
 
   // For POST requests to /api/snippets (create), verify authentication
   if (pathname === "/api/snippets" && req.method === "POST") {
+    return verifyAuthenticationMiddleware(req);
+  }
+
+  // /api/logs requires auth on ALL methods (including GET)
+  if (pathname.startsWith("/api/logs")) {
     return verifyAuthenticationMiddleware(req);
   }
 
@@ -74,7 +79,7 @@ async function verifyAuthenticationMiddleware(req: NextRequest) {
     const token = authHeader.substring(7); // Remove "Bearer " prefix
 
     // Verify JWT format and signature
-    const verification = verifyJWT(token);
+    const verification = await verifyJWT(token);
     if (!verification.valid) {
       return NextResponse.json(
         {
@@ -87,7 +92,7 @@ async function verifyAuthenticationMiddleware(req: NextRequest) {
 
     // Verify session exists in database (additional security check)
     try {
-      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const tokenHash = await sha256Hex(token);
 
       const session = await sql`
         SELECT * FROM auth_sessions 

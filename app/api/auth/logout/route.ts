@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
-import crypto from "crypto";
+import { sha256Hex, verifyJWT } from "@/lib/auth";
+import { appendActivityLog, extractIp, extractUserAgent } from "@/lib/activity-logger";
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -17,7 +18,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Hash the token to find and delete the session
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const tokenHash = await sha256Hex(token);
+    const verification = await verifyJWT(token);
+    const walletAddress = verification.valid
+      ? verification.payload?.walletAddress || verification.payload?.sub
+      : null;
 
     try {
       await sql`
@@ -28,6 +33,14 @@ export async function POST(req: NextRequest) {
       console.error("Error deleting session:", error);
       // Continue even if deletion fails
     }
+
+    await appendActivityLog("wallet.disconnected", "wallet", {
+      actorWallet: typeof walletAddress === "string" ? walletAddress : null,
+      resourceId: typeof walletAddress === "string" ? walletAddress : null,
+      metadata: { reason: "user_logout" },
+      ipAddress: extractIp(req.headers),
+      userAgent: extractUserAgent(req.headers),
+    });
 
     return NextResponse.json({ message: "Logout successful" }, { status: 200 });
   } catch (error: any) {

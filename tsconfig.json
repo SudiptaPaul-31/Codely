@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "target": "ES6",
@@ -13,12 +14,13 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "types": ["jest", "node"],
+    "types": [ "node"],
     "plugins": [
       {
         "name": "next"
       }
     ],
+    "baseUrl": ".", 
     "paths": {
       "@/*": ["./*"]
     }
@@ -30,5 +32,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "**/node_modules", "../node_modules"]
 }

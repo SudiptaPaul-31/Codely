@@ -18,6 +18,8 @@ import { Sidebar } from "@/components/Sidebar";
 import Loader from "@/components/ui/loader";
 import { VersionHistoryPanel } from "@/components/VersionHistory";
 import { PermissionsManager } from "@/components/PermissionsManager";
+import VerificationBadge from "@/components/verification-badge";
+import VerifyOwnershipButton from "@/components/verify-ownership-button";
 import { useWallet } from "@/components/WalletConnect";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
@@ -92,7 +94,7 @@ export default function SnippetsPage() {
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [, setVerificationStatuses] = useState<
+  const [verificationStatuses, setVerificationStatuses] = useState<
     Record<string, VerificationStatus>
   >({});
 
@@ -180,6 +182,7 @@ export default function SnippetsPage() {
         setLoadingMore(true);
       } else {
         setLoading(true);
+        setVerificationStatuses({});
       }
       
       const currentOffset = loadMore ? offset : 0;
@@ -645,23 +648,50 @@ transition-all duration-200"
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {snippets.map((snippet) => (
-                <Card
-                  key={snippet.id}
-                  className="bg-slate-800/50 border-purple-500/30 backdrop-blur-xl hover:border-purple-500/60 transition overflow-hidden group"
-                >
-                  <div className="p-6 space-y-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-white mb-1 truncate">
-                        {snippet.title}
-                      </h3>
-                      <p className="text-sm text-gray-400 line-clamp-2">
-                        {snippet.description || "No description"}
-                      </p>
-                    </div>
-                    <span className="inline-block bg-purple-600/50 text-purple-100 text-xs px-3 py-1 rounded-full">
-                      {snippet.language}
-                    </span>
+              {snippets.map((snippet) => {
+                const verificationStatus = verificationStatuses[snippet.id] || {
+                  verified: false,
+                };
+                const isOwner =
+                  wallet?.publicKey && snippet.owner_wallet_address
+                    ? wallet.publicKey.toUpperCase() === snippet.owner_wallet_address.toUpperCase()
+                    : false;
+
+                return (
+                  <Card
+                    key={snippet.id}
+                    className="bg-slate-800/50 border-purple-500/30 backdrop-blur-xl hover:border-purple-500/60 transition overflow-hidden group"
+                  >
+                    <div className="p-6 space-y-4">
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <h3 className="text-lg font-semibold text-white mb-1 truncate">
+                              {snippet.title}
+                            </h3>
+                            <p className="text-sm text-gray-400 line-clamp-2">
+                              {snippet.description || "No description"}
+                            </p>
+                          </div>
+                          {verificationStatus.verified && (
+                            <VerificationBadge
+                              verified={verificationStatus.verified}
+                              walletAddress={verificationStatus.walletAddress}
+                              verifiedAt={verificationStatus.verifiedAt}
+                            />
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-block bg-purple-600/50 text-purple-100 text-xs px-3 py-1 rounded-full">
+                            {snippet.language}
+                          </span>
+                          {isOwner && !verificationStatus.verified && (
+                            <span className="text-xs text-slate-400">
+                              Owns snippet — ready to verify
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     <div className="bg-slate-900/50 border border-purple-500/20 rounded p-3 max-h-32 overflow-hidden">
                       <pre className="text-xs text-gray-300 font-mono overflow-x-auto">
                         {snippet.code.slice(0, 200)}
@@ -683,7 +713,7 @@ transition-all duration-200"
                     <p className="text-xs text-gray-500 border-t border-purple-500/20 pt-4">
                       Created: {new Date(snippet.created_at).toLocaleDateString()}
                     </p>
-                    <div className="flex gap-2 pt-4 border-t border-purple-500/20">
+                    <div className="flex flex-wrap gap-2 pt-4 border-t border-purple-500/20">
                       <Button
                         onClick={() => handleCopy(snippet.code)}
                         variant="outline"
@@ -701,6 +731,18 @@ transition-all duration-200"
                           snippetId={snippet.id}
                           snippetTitle={snippet.title}
                           ownerWalletAddress={snippet.owner_wallet_address}
+                        />
+                      )}
+                      {!verificationStatus.verified && (
+                        <VerifyOwnershipButton
+                          snippetId={snippet.id}
+                          isOwner={isOwner}
+                          onSuccess={() => {
+                            setOffset(0);
+                            setHasMore(true);
+                            fetchSnippets();
+                          }}
+                          className="flex-1"
                         />
                       )}
                       <Button
@@ -721,7 +763,8 @@ transition-all duration-200"
                     </div>
                   </div>
                 </Card>
-              ))}
+                );
+              })}
             </div>
             
             {/* Load More Button */}
