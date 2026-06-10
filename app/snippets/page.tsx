@@ -59,6 +59,12 @@ interface PaginatedResponse {
   hasMore: boolean;
 }
 
+interface VerificationStatus {
+  verified: boolean;
+  walletAddress?: string;
+  verifiedAt?: string;
+}
+
 const DEFAULT_LIMIT = 20;
 const INITIAL_FORM_DATA = {
   title: "",
@@ -86,6 +92,9 @@ export default function SnippetsPage() {
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [, setVerificationStatuses] = useState<
+    Record<string, VerificationStatus>
+  >({});
 
   useEffect(() => {
     fetchSnippets();
@@ -111,6 +120,56 @@ export default function SnippetsPage() {
     },
     [wallet?.publicKey, wallet?.token],
   );
+
+  const fetchVerificationStatuses = async (snippetList: Snippet[]) => {
+    try {
+      const statuses = await Promise.all(
+        snippetList.map(async (snippet) => {
+          try {
+            const res = await fetch(
+              `/api/snippets/${snippet.id}/verification-status`,
+            );
+
+            if (!res.ok) {
+              return [
+                snippet.id,
+                { verified: false } as VerificationStatus,
+              ] as const;
+            }
+
+            const json = await res.json();
+
+            return [
+              snippet.id,
+              {
+                verified: Boolean(json.verification),
+                walletAddress: json.verification?.wallet_address,
+                verifiedAt: json.verification?.verified_at,
+              } as VerificationStatus,
+            ] as const;
+          } catch (err) {
+            console.error(
+              "Failed to fetch verification status for snippet:",
+              snippet.id,
+              err,
+            );
+
+            return [
+              snippet.id,
+              { verified: false } as VerificationStatus,
+            ] as const;
+          }
+        }),
+      );
+
+      setVerificationStatuses((prev) => ({
+        ...prev,
+        ...Object.fromEntries(statuses),
+      }));
+    } catch (err) {
+      console.error("Failed to load verification statuses:", err);
+    }
+  };
 
   const fetchSnippets = async (
     loadMore = false,
@@ -145,6 +204,8 @@ export default function SnippetsPage() {
       } else {
         setSnippets(data.data);
       }
+
+      await fetchVerificationStatuses(data.data);
       
       setTotal(data.total);
       setHasMore(data.hasMore);
