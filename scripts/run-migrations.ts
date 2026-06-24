@@ -32,6 +32,15 @@ async function runMigration() {
       console.log("✅ add-activity-logs.sql applied successfully");
     }
 
+    // 3. Run reputation tables
+    const reputationPath = path.join(process.cwd(), "scripts", "add-reputation.sql");
+    if (fs.existsSync(reputationPath)) {
+      console.log("Applying add-reputation.sql...");
+      const reputationSql = fs.readFileSync(reputationPath, "utf-8");
+      await sql(reputationSql);
+      console.log("✅ add-reputation.sql applied successfully");
+    }
+
     console.log("Database initialized successfully!");
     process.exit(0);
   } catch (error) {
