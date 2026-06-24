@@ -21,6 +21,7 @@ const NAV_ITEMS = [
 	{ label: "Snippets", href: "/snippets", icon: FileCode2 },
 	{ label: "Collections", href: "/collections", icon: Layers },
 	{ label: "Favorites", href: "/favorites", icon: Star },
+	{ label: "Collections", href: "/collections", icon: Layers },
 ];
 
 export function Sidebar() {
