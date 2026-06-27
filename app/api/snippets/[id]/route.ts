@@ -164,7 +164,8 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const snippet = await service.updateSnippet(id, body);
+    const { storeOnIpfs = false, ...snippetData } = body;
+    const snippet = await service.updateSnippet(id, snippetData, storeOnIpfs);
 
     // Log update
     if (walletAddress) {

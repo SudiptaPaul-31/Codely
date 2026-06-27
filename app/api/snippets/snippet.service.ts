@@ -6,6 +6,7 @@ import {
 } from "./snippet.repository";
 import { createSnippetSchema, updateSnippetSchema } from "./snippet.validator";
 import { ActivityLogger } from "@/lib/activity-logger";
+import { storeOnIPFS, retrieveFromIPFS } from "@/lib/ipfs";
 
 export class SnippetService {
   constructor(private snippetRepository: SnippetRepository) {}
@@ -43,20 +44,51 @@ export class SnippetService {
     }
   }
 
-  async createSnippet(data: unknown) {
+  async getSnippetByIpfsCid(ipfsCid: string) {
+    try {
+      const snippet = await this.snippetRepository.findByIpfsCid(ipfsCid);
+      if (!snippet) {
+        throw new Error("Snippet not found for this IPFS CID");
+      }
+      return snippet;
+    } catch (error) {
+      console.error("[Service] Error fetching snippet by IPFS CID:", error);
+      throw error instanceof Error
+        ? error
+        : new Error("Failed to fetch snippet");
+    }
+  }
+
+  async createSnippet(data: unknown, storeOnIpfs: boolean = false) {
     // 1. Validation (Throws ZodError if invalid)
     const validatedData = createSnippetSchema.parse(data);
 
-    // 2. Database interaction via Repository
+    let ipfsCid: string | undefined;
+
+    // 2. Store code on IPFS if requested
+    if (storeOnIpfs && validatedData.code) {
+      try {
+        ipfsCid = await storeOnIPFS(validatedData.code);
+        console.log("[Service] Snippet stored on IPFS with CID:", ipfsCid);
+      } catch (error) {
+        console.error("[Service] Error storing snippet on IPFS:", error);
+        // Continue even if IPFS fails - we'll still store in database
+      }
+    }
+
+    // 3. Database interaction via Repository
     try {
-      return await this.snippetRepository.create(validatedData);
+      return await this.snippetRepository.create({
+        ...validatedData,
+        ipfsCid,
+      });
     } catch (error) {
       console.error("[Service] Error creating snippet:", error);
       throw new Error("Failed to create snippet");
     }
   }
 
-  async updateSnippet(id: string, data: unknown) {
+  async updateSnippet(id: string, data: unknown, storeOnIpfs: boolean = false) {
     // 1. Validation
     const validatedData = updateSnippetSchema.parse(data);
 
@@ -66,9 +98,25 @@ export class SnippetService {
       throw new Error("Snippet not found");
     }
 
-    // 3. Database interaction via Repository
+    let ipfsCid: string | undefined = existing.ipfs_cid;
+
+    // 3. Store updated code on IPFS if requested
+    if (storeOnIpfs && validatedData.code) {
+      try {
+        ipfsCid = await storeOnIPFS(validatedData.code);
+        console.log("[Service] Updated snippet stored on IPFS with CID:", ipfsCid);
+      } catch (error) {
+        console.error("[Service] Error storing updated snippet on IPFS:", error);
+        // Continue even if IPFS fails
+      }
+    }
+
+    // 4. Database interaction via Repository
     try {
-      return await this.snippetRepository.update(id, validatedData);
+      return await this.snippetRepository.update(id, {
+        ...validatedData,
+        ipfsCid,
+      });
     } catch (error) {
       console.error("[Service] Error updating snippet:", error);
       throw new Error("Failed to update snippet");

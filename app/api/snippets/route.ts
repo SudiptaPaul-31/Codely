@@ -113,14 +113,15 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
+    const { storeOnIpfs = false, ...snippetData } = body;
 
     // Extract and inject the wallet address securely from headers
     const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
     if (walletAddress) {
-      body.ownerWalletAddress = walletAddress;
+      snippetData.ownerWalletAddress = walletAddress;
     }
 
-    const snippet = await service.createSnippet(body);
+    const snippet = await service.createSnippet(snippetData, storeOnIpfs);
 
     // Log transaction if wallet address provided
     if (walletAddress) {
@@ -129,7 +130,7 @@ export async function POST(req: NextRequest) {
           walletAddress,
           "snippet_create",
           `Created snippet ${snippet.id}`,
-          { snippetId: snippet.id },
+          { snippetId: snippet.id, ipfsCid: snippet.ipfs_cid },
         );
       } catch (err) {
         console.error("[transactions] Failed to log snippet_create:", err);
@@ -139,7 +140,7 @@ export async function POST(req: NextRequest) {
     await appendActivityLog("snippet.created", "snippet", {
       actorWallet: walletAddress,
       resourceId: snippet.id,
-      metadata: { title: snippet.title, language: snippet.language, tags: snippet.tags },
+      metadata: { title: snippet.title, language: snippet.language, tags: snippet.tags, ipfsCid: snippet.ipfs_cid },
       ipAddress: extractIp(req.headers),
       userAgent: extractUserAgent(req.headers),
     });

@@ -10,6 +10,7 @@ CREATE TABLE snippets (
   description TEXT,
   language VARCHAR(50) NOT NULL,
   code TEXT NOT NULL,
+  ipfs_cid VARCHAR(255),
   tags JSONB DEFAULT '[]'::jsonb,
   owner_wallet_address VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -31,3 +32,4 @@ CREATE INDEX IF NOT EXISTS idx_snippets_search_vector ON snippets USING GIN (
     setweight(jsonb_to_tsvector('simple', COALESCE(tags, '[]'::jsonb), '["string"]'), 'B')
   )
 );
+CREATE INDEX IF NOT EXISTS idx_snippets_ipfs_cid ON snippets(ipfs_cid);
