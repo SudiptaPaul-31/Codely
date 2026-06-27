@@ -1,8 +1,24 @@
-export default {
-  preset: "ts-jest",
+import nextJest from "next/jest.js";
+
+const createJestConfig = nextJest({
+  dir: "./",
+});
+
+/** @type {import('jest').Config} */
+const config = {
+  coverageProvider: "v8",
   testEnvironment: "jest-environment-jsdom",
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
   },
-  setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
+  transform: {
+    "^.+\\.(ts|tsx)$": [
+      "ts-jest",
+      {
+        tsconfig: "tsconfig.json",
+      },
+    ],
+  },
 };
+
+export default createJestConfig(config);
