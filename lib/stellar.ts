@@ -1,4 +1,6 @@
+
 import crypto from "crypto";
+
 import * as StellarSdk from "stellar-sdk";
 
 const STELLAR_NETWORK = process.env.NEXT_PUBLIC_STELLAR_NETWORK || "testnet";
@@ -21,6 +23,94 @@ export interface StellarSubmitResult {
   timestamp?: string;
   memo?: string;
   error?: string;
+}
+
+
+/**
+ * Submit an immutable ownership-transfer memo/proof on Stellar.
+ * Memo format (truncated/compacted to Stellar memo_text length limits):
+ * `tr:<snippetId8>:<oldOwner8>:<newOwner8>`
+ */
+export async function submitOwnershipTransferMemoToStellar({
+  secretKey,
+  snippetId,
+  oldOwnerWalletAddress,
+  newOwnerWalletAddress,
+}: {
+  secretKey?: string;
+  snippetId: string;
+  oldOwnerWalletAddress: string;
+  newOwnerWalletAddress: string;
+}): Promise<StellarSubmitResult> {
+  const key = secretKey || STELLAR_SECRET_KEY;
+
+  // Fall back to deterministic mock when no key configured.
+  if (!key) {
+    const timestamp = new Date().toISOString();
+    const memo = buildOwnershipTransferMemo(snippetId, oldOwnerWalletAddress, newOwnerWalletAddress);
+    const txHash = crypto
+      .createHash("sha256")
+      .update(`${snippetId}:${oldOwnerWalletAddress}:${newOwnerWalletAddress}:${timestamp}`)
+      .digest("hex");
+
+    console.warn(
+      "[Stellar] Ownership transfer proof: no secret key configured — using deterministic mock.",
+    );
+
+    return {
+      success: true,
+      transactionHash: txHash,
+      timestamp,
+      memo,
+    };
+  }
+
+  try {
+    const server = new StellarSdk.Horizon.Server(HORIZON_URL);
+    const keypair = StellarSdk.Keypair.fromSecret(key);
+    const account = await server.loadAccount(keypair.publicKey());
+
+    const timestamp = new Date().toISOString();
+    const memoText = buildOwnershipTransferMemo(
+      snippetId,
+      oldOwnerWalletAddress,
+      newOwnerWalletAddress,
+    );
+
+    const transaction = new StellarSdk.TransactionBuilder(account, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(
+        StellarSdk.Operation.manageData({
+          name: `own:${snippetId.slice(0, 20)}`,
+          value: `${oldOwnerWalletAddress.slice(0, 12)}->${newOwnerWalletAddress.slice(0, 12)}`,
+        }),
+      )
+      .addMemo(StellarSdk.Memo.text(memoText))
+      .setTimeout(30)
+      .build();
+
+    transaction.sign(keypair);
+
+    const response = await server.submitTransaction(transaction);
+
+    return {
+      success: true,
+      transactionHash: response.hash,
+      ledger: response.ledger,
+      timestamp,
+      memo: memoText,
+    };
+  } catch (error: any) {
+    console.error("[Stellar] Ownership transfer submission failed:", error?.message);
+    const resultCodes = error?.response?.data?.extras?.result_codes;
+    const details = resultCodes ? JSON.stringify(resultCodes) : error?.message;
+    return {
+      success: false,
+      error: `Stellar ownership transfer failed: ${details}`,
+    };
+  }
 }
 
 /**
@@ -214,6 +304,19 @@ function generateBatchHash(hashes: string[]): string {
   const combined = [...hashes].sort().join("|");
   return crypto.createHash("sha256").update(combined).digest("hex");
 }
+
+function buildOwnershipTransferMemo(
+  snippetId: string,
+  oldOwnerWalletAddress: string,
+  newOwnerWalletAddress: string,
+): string {
+  const shortSnippet = snippetId.replace(/-/g, "").slice(0, 8);
+  const shortOld = oldOwnerWalletAddress.slice(0, 8);
+  const shortNew = newOwnerWalletAddress.slice(0, 8);
+  // Stellar memo_text max length is 28 bytes; this stays compact.
+  return `tr:${shortSnippet}:${shortOld}:${shortNew}`.slice(0, 28);
+}
+
 
 // ─── Mock fallbacks (no secret key configured) ──────────────────────────────
 
