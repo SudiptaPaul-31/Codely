@@ -7,6 +7,7 @@ import { Controller, useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import Loader from "@/components/ui/loader";
 import { Textarea } from "@/components/ui/textarea";
+import FormSkeleton from "@/components/skeletons/FormSkeleton";
 import {
   Select,
   SelectContent,
@@ -26,6 +27,7 @@ interface SnippetFormProps {
   initialValues?: Partial<SnippetFormValues>;
   closeForm: () => void;
   onSuccess: () => Promise<void>;
+  isLoading?: boolean; // Added hook control to intercept loading state
 }
 
 export default function SnippetForm({
@@ -33,6 +35,7 @@ export default function SnippetForm({
   initialValues,
   closeForm,
   onSuccess,
+  isLoading = false,
 }: SnippetFormProps) {
   const [submitting, setSubmitting] = useState(false);
 
@@ -100,8 +103,17 @@ export default function SnippetForm({
     }
   };
 
+  // Intercept layout rendering if initial data prefetch is unresolved
+  if (isLoading) {
+    return (
+      <Card className="mb-8 bg-slate-800/50 border-purple-500/30 backdrop-blur-xl p-6">
+        <FormSkeleton />
+      </Card>
+    );
+  }
+
   return (
-    <Card className="mb-8 bg-slate-800/50 border-purple-500/30 backdrop-blur-xl p-6">
+    <Card className="mb-8 bg-slate-800/50 border-purple-500/30 backdrop-blur-xl p-6 skeleton-fade-in">
       <h2 className="text-2xl font-bold text-white mb-6">
         {editingId ? "Edit Snippet" : "Add New Snippet"}
       </h2>

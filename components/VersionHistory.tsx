@@ -11,7 +11,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Loader } from "@/components/ui/loader";
+import Loader from "@/components/ui/loader";
 import {
   History,
   RotateCcw,
