@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Copy, Plus } from "lucide-react";
+import { Trash2, Copy, Plus, Star } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import Loader from "@/components/ui/loader";
 import { VersionHistoryPanel } from "@/components/VersionHistory";
@@ -89,6 +89,7 @@ export default function SnippetsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verificationStatuses, setVerificationStatuses] = useState<Record<string, VerificationStatus>>({});
+  const [favoriteStatuses, setFavoriteStatuses] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchSnippets();
@@ -125,6 +126,38 @@ export default function SnippetsPage() {
     }
   };
 
+  const fetchFavoriteStatuses = async (snippetIds: string[]) => {
+    try {
+      const res = await fetch("/api/favorites/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snippetIds }),
+      });
+      if (res.ok) {
+        const statuses = await res.json();
+        setFavoriteStatuses((prev) => ({ ...prev, ...statuses }));
+      }
+    } catch (err) {
+      console.error("Failed to fetch favorite statuses:", err);
+    }
+  };
+
+  const toggleFavorite = async (snippetId: string) => {
+    try {
+      const res = await fetch("/api/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snippetId }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setFavoriteStatuses((prev) => ({ ...prev, [snippetId]: result.favorited }));
+      }
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+    }
+  };
+
   const fetchSnippets = async (loadMore = false) => {
     try {
       if (loadMore) {
@@ -151,6 +184,7 @@ export default function SnippetsPage() {
       setHasMore(data.hasMore);
       setOffset(currentOffset + data.data.length);
       await fetchVerificationStatuses(data.data);
+      await fetchFavoriteStatuses(data.data.map((s) => s.id));
     } catch (e) {
       console.error(e);
     } finally {
@@ -522,22 +556,40 @@ transition-all duration-200"
                     <div className="p-6 space-y-4">
                       <div className="space-y-3">
                         <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <h3 className="text-lg font-semibold text-white mb-1 truncate">
-                              {snippet.title}
-                            </h3>
-                            <p className="text-sm text-gray-400 line-clamp-2">
-                              {snippet.description || "No description"}
-                            </p>
+                            <div className="min-w-0">
+                              <h3 className="text-lg font-semibold text-white mb-1 truncate">
+                                {snippet.title}
+                              </h3>
+                              <p className="text-sm text-gray-400 line-clamp-2">
+                                {snippet.description || "No description"}
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFavorite(snippet.id);
+                              }}
+                              className={
+                                favoriteStatuses[snippet.id]
+                                  ? "text-amber-400 hover:text-amber-300"
+                                  : "text-gray-400 hover:text-gray-300"
+                              }
+                            >
+                              <Star
+                                className="w-5 h-5"
+                                fill={favoriteStatuses[snippet.id] ? "currentColor" : "none"}
+                              />
+                            </Button>
+                            {verificationStatus.verified && (
+                              <VerificationBadge
+                                verified={verificationStatus.verified}
+                                walletAddress={verificationStatus.walletAddress}
+                                verifiedAt={verificationStatus.verifiedAt}
+                              />
+                            )}
                           </div>
-                          {verificationStatus.verified && (
-                            <VerificationBadge
-                              verified={verificationStatus.verified}
-                              walletAddress={verificationStatus.walletAddress}
-                              verifiedAt={verificationStatus.verifiedAt}
-                            />
-                          )}
-                        </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="inline-block bg-purple-600/50 text-purple-100 text-xs px-3 py-1 rounded-full">
                             {snippet.language}
