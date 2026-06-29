@@ -55,9 +55,10 @@ export async function verifyAuthentication(req: NextRequest) {
 /**
  * Higher-order function to protect API routes
  * Usage: const protectedGET = withAuth(GET);
+ * Supports both simple routes and dynamic routes with params.
  */
-export function withAuth(handler: (req: NextRequest) => Promise<NextResponse>) {
-  return async (req: NextRequest) => {
+export function withAuth(handler: (req: NextRequest, ...args: any[]) => Promise<NextResponse>) {
+  return async (req: NextRequest, ...args: any[]) => {
     const auth = await verifyAuthentication(req);
 
     if (!auth) {
@@ -69,7 +70,7 @@ export function withAuth(handler: (req: NextRequest) => Promise<NextResponse>) {
 
     // Add auth payload to request for use in handler
     (req as any).auth = auth;
-    return handler(req);
+    return handler(req, ...args);
   };
 }
 
