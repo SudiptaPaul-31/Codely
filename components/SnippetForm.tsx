@@ -88,7 +88,7 @@ export default function SnippetForm({
         },
       );
 
-      if (!res.ok) throw new Error("Failed to save snippet");
+      if (!res.ok) throw new Error("Failed to save snippet.");
 
       await onSuccess();
       closeForm();
