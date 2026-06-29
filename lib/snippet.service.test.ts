@@ -9,6 +9,9 @@ const mockRepository = {
   create: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
+  softDelete: jest.fn(),
+  restore: jest.fn(),
+  permanentlyDelete: jest.fn(),
 } as unknown as SnippetRepository;
 
 // Suppress console.error in tests
@@ -134,10 +137,8 @@ describe("SnippetService", () => {
   describe("updateSnippet", () => {
     it("should update snippet with valid data", async () => {
       const updateData = { title: "Updated Title" };
-      const existingSnippet = { id: "1", title: "Old Title" };
       const updatedSnippet = { id: "1", title: "Updated Title" };
 
-      (mockRepository.findById as jest.Mock).mockResolvedValue(existingSnippet);
       (mockRepository.update as jest.Mock).mockResolvedValue(updatedSnippet);
 
       const result = await service.updateSnippet("1", updateData);
@@ -147,7 +148,7 @@ describe("SnippetService", () => {
 
     it("should throw error when snippet not found", async () => {
       const updateData = { title: "Updated Title" };
-      (mockRepository.findById as jest.Mock).mockResolvedValue(null);
+      (mockRepository.update as jest.Mock).mockResolvedValue(null);
 
       await expect(service.updateSnippet("999", updateData)).rejects.toThrow(
         "Snippet not found",
@@ -158,15 +159,14 @@ describe("SnippetService", () => {
   describe("deleteSnippet", () => {
     it("should delete snippet successfully", async () => {
       const existingSnippet = { id: "1", title: "Test" };
-      (mockRepository.findById as jest.Mock).mockResolvedValue(existingSnippet);
-      (mockRepository.delete as jest.Mock).mockResolvedValue(existingSnippet);
+      (mockRepository.softDelete as jest.Mock).mockResolvedValue(existingSnippet);
 
       await expect(service.deleteSnippet("1")).resolves.not.toThrow();
-      expect(mockRepository.delete).toHaveBeenCalledWith("1");
+      expect(mockRepository.softDelete).toHaveBeenCalledWith("1", null);
     });
 
     it("should throw error when snippet not found", async () => {
-      (mockRepository.findById as jest.Mock).mockResolvedValue(null);
+      (mockRepository.softDelete as jest.Mock).mockResolvedValue(null);
 
       await expect(service.deleteSnippet("999")).rejects.toThrow(
         "Snippet not found",

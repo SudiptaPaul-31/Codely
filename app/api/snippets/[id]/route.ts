@@ -67,15 +67,19 @@ export async function GET(
       if (!walletAddress) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
-      const allowed = await canView(id, walletAddress);
-      if (!allowed) {
-        return NextResponse.json(
-          {
-            error: "Forbidden",
-            message: "You do not have view access to this snippet.",
-          },
-          { status: 403 },
-        );
+
+      // Owner always has access — skip permission check
+      if (walletAddress !== ownerWallet) {
+        const allowed = await canView(id, walletAddress);
+        if (!allowed) {
+          return NextResponse.json(
+            {
+              error: "Forbidden",
+              message: "You do not have view access to this snippet.",
+            },
+            { status: 403 },
+          );
+        }
       }
     }
 

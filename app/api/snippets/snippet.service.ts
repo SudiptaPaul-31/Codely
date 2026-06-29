@@ -57,19 +57,18 @@ export class SnippetService {
   }
 
   async updateSnippet(id: string, data: unknown) {
-    // 1. Validation
     const validatedData = updateSnippetSchema.parse(data);
 
-    // 2. Check ownership/existence
-    const existing = await this.snippetRepository.findById(id);
-    if (!existing) {
-      throw new Error("Snippet not found");
-    }
-
-    // 3. Database interaction via Repository
     try {
-      return await this.snippetRepository.update(id, validatedData);
+      const updated = await this.snippetRepository.update(id, validatedData);
+      if (!updated) {
+        throw new Error("Snippet not found");
+      }
+      return updated;
     } catch (error) {
+      if (error instanceof Error && error.message === "Snippet not found") {
+        throw error;
+      }
       console.error("[Service] Error updating snippet:", error);
       throw new Error("Failed to update snippet");
     }
@@ -79,30 +78,28 @@ export class SnippetService {
    * Soft delete a snippet (marks as deleted, preserves data)
    */
   async deleteSnippet(id: string, userWalletAddress: string | null = null) {
-    // 1. Check ownership/existence
-    const existing = await this.snippetRepository.findById(id);
-    if (!existing) {
-      throw new Error("Snippet not found");
-    }
-
-    // 2. Soft delete via Repository
     try {
       const deleted = await this.snippetRepository.softDelete(id, userWalletAddress);
-      
-      // 3. Log the delete action
+      if (!deleted) {
+        throw new Error("Snippet not found");
+      }
+
       await ActivityLogger.log(
         id,
         "DELETE",
         userWalletAddress,
         {
-          title: existing.title,
-          language: existing.language,
+          title: deleted.title,
+          language: deleted.language,
           deletedAt: new Date().toISOString(),
         },
       );
 
       return deleted;
     } catch (error) {
+      if (error instanceof Error && error.message === "Snippet not found") {
+        throw error;
+      }
       console.error("[Service] Error deleting snippet:", error);
       throw new Error("Failed to delete snippet");
     }
@@ -113,31 +110,24 @@ export class SnippetService {
    */
   async restoreSnippet(id: string, userWalletAddress: string | null = null) {
     try {
-      // Get the snippet (including soft-deleted ones)
-      const result = await this.snippetRepository["sql"]`
-        SELECT * FROM snippets WHERE id = ${id}
-      `;
-      const snippet = result[0];
-
-      if (!snippet) {
-        throw new Error("Snippet not found");
-      }
-
-      if (!snippet.is_deleted) {
+      const restored = await this.snippetRepository.restore(id);
+      if (!restored) {
+        const existing = await this.snippetRepository["sql"]`
+          SELECT is_deleted FROM snippets WHERE id = ${id}
+        `;
+        if (!existing[0]) {
+          throw new Error("Snippet not found");
+        }
         throw new Error("Snippet is not deleted");
       }
 
-      // Restore via Repository
-      const restored = await this.snippetRepository.restore(id);
-
-      // Log the restore action
       await ActivityLogger.log(
         id,
         "RESTORE",
         userWalletAddress,
         {
-          title: snippet.title,
-          language: snippet.language,
+          title: restored.title,
+          language: restored.language,
           restoredAt: new Date().toISOString(),
         },
       );
@@ -188,27 +178,18 @@ export class SnippetService {
    */
   async permanentlyDeleteSnippet(id: string) {
     try {
-      // Get the snippet first (for logging)
-      const result = await this.snippetRepository["sql"]`
-        SELECT * FROM snippets WHERE id = ${id}
-      `;
-      const snippet = result[0];
-
-      if (!snippet) {
+      const deleted = await this.snippetRepository.permanentlyDelete(id);
+      if (!deleted) {
         throw new Error("Snippet not found");
       }
 
-      // Permanently delete
-      const deleted = await this.snippetRepository.permanentlyDelete(id);
-
-      // Log the permanent delete
       await ActivityLogger.log(
         id,
         "DELETE",
         null,
         {
-          title: snippet.title,
-          language: snippet.language,
+          title: deleted.title,
+          language: deleted.language,
           permanentlyDeleted: true,
           deletedAt: new Date().toISOString(),
         },
