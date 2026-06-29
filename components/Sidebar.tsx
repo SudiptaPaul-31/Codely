@@ -11,12 +11,14 @@ import {
 	ChevronRight,
 	Menu,
 	X,
+	Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
 	{ label: "Home", href: "/", icon: Home },
 	{ label: "Snippets", href: "/snippets", icon: FileCode2 },
+	{ label: "Favorites", href: "/favorites", icon: Star },
 ];
 
 export function Sidebar() {

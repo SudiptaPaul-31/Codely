@@ -103,7 +103,7 @@ export class SignatureMiddleware {
           actorWallet: walletAddress,
           resourceId,
           metadata: { action, timestamp },
-          ipAddress: extractIp(req),
+          ipAddress: extractIp(req.headers),
           userAgent: extractUserAgent(req.headers)
         });
 
@@ -132,7 +132,7 @@ export class SignatureMiddleware {
         actorWallet: walletAddress,
         resourceId,
         metadata: { action, timestamp },
-        ipAddress: extractIp(req),
+        ipAddress: extractIp(req.headers),
         userAgent: extractUserAgent(req.headers)
       });
 

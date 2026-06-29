@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 
-const sql = neon(process.env.DATABASE_URL!);
+export const sql = neon(process.env.DATABASE_URL!);
 
 // Ensure crypto is available
 import crypto from "crypto";
@@ -209,6 +209,10 @@ export async function createTransaction(
     return result[0] as any;
   } catch (error) {
     console.error("[db] Error creating transaction:", error);
+    throw error;
+  }
+}
+
 // ============ NFT Functions ============
 
 export async function updateSnippetNft(
@@ -262,6 +266,10 @@ export async function getTransactionsByWallet(
     };
   } catch (error) {
     console.error("[db] Error fetching transactions:", error);
+    throw error;
+  }
+}
+
 // ============ On-Chain Timestamp Verification Functions ============
 
 /**

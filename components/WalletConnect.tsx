@@ -167,7 +167,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         const result = await albedo.default.signMessage({
           message,
         });
-        signature = result.signature;
+        signature = result.message_signature;
       }
 
       if (!signature) {
@@ -267,7 +267,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const result = await albedo.default.signMessage({
         message,
       });
-      signature = result.signature;
+      signature = result.message_signature;
     } else {
       throw new Error("Message signing not supported for this wallet type");
     }
@@ -292,7 +292,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       clearError,
       signAction,
     }),
-    [connected, publicKey, walletName, connecting, error],
     [connected, publicKey, walletName, connecting, error, token],
   );
 

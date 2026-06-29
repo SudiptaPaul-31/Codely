@@ -218,7 +218,7 @@ export class SnippetRepository {
           language = COALESCE(${data.language}, language),
           tags = COALESCE(${data.tags}, tags),
           updated_at = ${updatedAt}
-      WHERE id = ${id}
+      WHERE id = ${id} AND is_deleted = false
       RETURNING *
     `;
     return result[0] || null;
@@ -226,7 +226,7 @@ export class SnippetRepository {
 
   async delete(id: string) {
     const result = await this.sql`
-      DELETE FROM snippets WHERE id = ${id} RETURNING *
+      DELETE FROM snippets WHERE id = ${id} AND is_deleted = false RETURNING *
     `;
     return result[0] || null;
   }
@@ -253,7 +253,7 @@ export class SnippetRepository {
     const result = await this.sql`
       UPDATE snippets 
       SET is_deleted = false, deleted_at = null, deleted_by = null
-      WHERE id = ${id}
+      WHERE id = ${id} AND is_deleted = true
       RETURNING *
     `;
     return result[0] || null;

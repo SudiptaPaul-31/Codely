@@ -6,7 +6,6 @@ import { createTransaction } from "@/lib/db";
 import { OwnershipMiddleware } from "./ownership.middleware";
 import { SnippetRepository } from "./snippet.repository";
 import { SnippetService } from "./snippet.service";
-import { rateLimit } from "@/lib/rateLimiter";
 import { SearchSnippetsOptions } from "./snippet.repository";
 
 // Default pagination settings
