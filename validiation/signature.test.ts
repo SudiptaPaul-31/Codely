@@ -5,7 +5,7 @@ import * as StellarSdk from "stellar-sdk";
 // Mock the OwnershipMiddleware since it's used internally by SignatureMiddleware
 jest.mock("../app/api/snippets/ownership.middleware", () => ({
   OwnershipMiddleware: {
-    extractWalletAddress: jest.fn().mockImplementation((req) => {
+    extractWalletAddress: jest.fn().mockImplementation((req: NextRequest) => {
       return req.headers.get("x-wallet-address");
     }),
   },

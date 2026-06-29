@@ -3,7 +3,7 @@ import { neon } from "@neondatabase/serverless";
 // Initialise the Neon DB client
 const sql = neon(process.env.DATABASE_URL!);
 
-export type ActivityAction = "DELETE" | "RESTORE" | "CREATE" | "UPDATE" | "SHARE" | "REVOKESHARE";
+// Removed old ActivityAction
 
 export interface ActivityLogEntry {
   id: string;
@@ -53,6 +53,9 @@ export class ActivityLogger {
       throw error;
     }
   }
+}
+/** Extract the IP address from request headers. */
+export function extractIp(headers: Headers): string | null {
   const realIp = headers.get("x-real-ip");
   return realIp ?? null;
 }
@@ -63,7 +66,13 @@ export function extractUserAgent(headers: Headers): string | null {
 }
 
 /** Action identifiers for activity logging. Extend this union when adding new events. */
-export type ActivityAction =
+export type ActivityAction = 
+  | "DELETE" 
+  | "RESTORE" 
+  | "CREATE" 
+  | "UPDATE" 
+  | "SHARE" 
+  | "REVOKESHARE"
   | "snippet.created"
   | "snippet.updated"
   | "snippet.deleted"

@@ -19,7 +19,7 @@ export async function POST(
     const { id } = await params;
 
     // Extract wallet address
-    const walletAddress = OwnershipMiddleware.extractWalletAddress(req);
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
 
     if (!walletAddress) {
       return NextResponse.json(

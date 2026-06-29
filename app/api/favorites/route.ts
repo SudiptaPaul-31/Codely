@@ -1,32 +1,66 @@
 import { NextRequest, NextResponse } from "next/server";
-import { withAuth } from "@/lib/auth-middleware";
-import { FavoritesRepository } from "./favorites.repository";
-import { FavoritesService } from "./favorites.service";
-import { SnippetRepository } from "../snippets/snippet.repository";
+import { OwnershipMiddleware } from "../snippets/ownership.middleware";
+import { FavoriteRepository } from "./favorite.repository";
+import { FavoriteService } from "./favorite.service";
 
-const favoritesRepository = new FavoritesRepository();
-const snippetRepository = new SnippetRepository();
-const favoritesService = new FavoritesService(favoritesRepository, snippetRepository);
+const repository = new FavoriteRepository();
+const service = new FavoriteService(repository);
 
-async function handler(req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const auth = (req as any).auth;
-    const walletAddress = auth.walletAddress;
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
+    if (!walletAddress) {
+      return NextResponse.json(
+        { error: "Wallet address not found" },
+        { status: 401 }
+      );
+    }
 
     const { searchParams } = new URL(req.url);
-    const page = searchParams.get("page") ? parseInt(searchParams.get("page")!, 10) : 1;
-    const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!, 10) : 20;
+    const limit = Math.min(
+      Math.max(parseInt(searchParams.get("limit") || "20", 10), 1),
+      100
+    );
+    const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
 
-    const result = await favoritesService.getFavorites(walletAddress, { page, limit });
-
+    const result = await service.getFavorites(walletAddress, { limit, offset });
     return NextResponse.json(result);
   } catch (error) {
     console.error("[API] Error fetching favorites:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal Server Error" },
-      { status: 500 },
+      { error: "Failed to fetch favorites" },
+      { status: 500 }
     );
   }
 }
 
-export const GET = withAuth(handler);
+export async function POST(req: NextRequest) {
+  try {
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
+    if (!walletAddress) {
+      return NextResponse.json(
+        { error: "Wallet address not found" },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
+    const { snippetId } = body;
+
+    if (!snippetId) {
+      return NextResponse.json(
+        { error: "Snippet ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const result = await service.toggleFavorite(walletAddress, snippetId);
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("[API] Error toggling favorite:", error);
+    return NextResponse.json(
+      { error: "Failed to toggle favorite" },
+      { status: 500 }
+    );
+  }
+}

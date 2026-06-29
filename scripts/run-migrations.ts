@@ -19,7 +19,7 @@ async function runMigration() {
       // if they contain complex types. We can split them by semicolon and run them one by one.
       // A better way is to use the transaction feature but neon() is a single connection stateless.
       // For simple init, we will try running the whole string.
-      await sql(initDbSql);
+      await sql(initDbSql as unknown as TemplateStringsArray);
       console.log("✅ init-db.sql applied successfully");
     }
 
@@ -28,17 +28,26 @@ async function runMigration() {
     if (fs.existsSync(activityLogsPath)) {
       console.log("Applying add-activity-logs.sql...");
       const activityLogsSql = fs.readFileSync(activityLogsPath, "utf-8");
-      await sql(activityLogsSql);
+      await sql(activityLogsSql as unknown as TemplateStringsArray);
       console.log("✅ add-activity-logs.sql applied successfully");
     }
 
-    // 8. Run favorites table
+    // 3. Run favorites table
     const favoritesPath = path.join(process.cwd(), "scripts", "add-favorites.sql");
     if (fs.existsSync(favoritesPath)) {
       console.log("Applying add-favorites.sql...");
       const favoritesSql = fs.readFileSync(favoritesPath, "utf-8");
-      await sql(favoritesSql);
+      await sql(favoritesSql as unknown as TemplateStringsArray);
       console.log("✅ add-favorites.sql applied successfully");
+    }
+
+    // 4. Run reputation tables
+    const reputationPath = path.join(process.cwd(), "scripts", "add-reputation.sql");
+    if (fs.existsSync(reputationPath)) {
+      console.log("Applying add-reputation.sql...");
+      const reputationSql = fs.readFileSync(reputationPath, "utf-8");
+      await sql(reputationSql as unknown as TemplateStringsArray);
+      console.log("✅ add-reputation.sql applied successfully");
     }
 
     console.log("Database initialized successfully!");

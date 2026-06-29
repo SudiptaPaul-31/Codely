@@ -24,6 +24,10 @@ export class VerificationService {
    * @returns The verification record if successful
    * @throws Error if validation or verification fails
    */
+    async getVerificationAuditLog(snippetId: string, options?: any) {
+    return this.verificationRepository.getVerificationAuditLog(snippetId, options);
+  }
+
   async verifyOwnership(
     snippetId: string,
     walletAddress: string,
@@ -126,7 +130,7 @@ export class VerificationService {
         `[Verification Service] Successfully verified ownership for snippet: ${snippetId} by wallet: ${walletAddress}`,
       );
 
-      return verificationRecord;
+      return verificationRecord as unknown as VerificationRecord;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
@@ -152,7 +156,7 @@ export class VerificationService {
         console.log(`[Verification Service] No active verification found for snippet: ${snippetId}`);
         return null;
       }
-      return status;
+      return status as unknown as VerificationRecord;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
@@ -195,7 +199,7 @@ export class VerificationService {
         `[Verification Service] Revoked verification for snippet: ${snippetId} by wallet: ${revokedBy}`,
       );
 
-      return revoked;
+      return revoked as unknown as VerificationRecord;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
