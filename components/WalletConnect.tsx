@@ -167,7 +167,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         const result = await albedo.default.signMessage({
           message,
         });
-        signature = result.signature;
+        signature = result.message_signature;
       }
 
       if (!signature) {
@@ -240,6 +240,45 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setError(null);
   };
 
+  const signAction = async (action: string, resourceId: string) => {
+    if (!connected || !publicKey) {
+      throw new Error("Wallet not connected");
+    }
+    
+    // Generate nonce and timestamp
+    const nonce = crypto.randomUUID();
+    const timestamp = Date.now();
+    
+    const message = `Codely signature request\nAction: ${action}\nResource: ${resourceId}\nNonce: ${nonce}\nTimestamp: ${timestamp}`;
+    
+    let signature: string | null = null;
+    const currentWalletName = walletName?.toLowerCase();
+    
+    if (currentWalletName === "freighter") {
+      let freighter = window.freighter || window.freighterApi;
+      if (!freighter) {
+        throw new Error("Freighter not available");
+      }
+      signature = await freighter.signMessage(message, {
+        domain: "codely.app",
+      });
+    } else if (currentWalletName === "albedo") {
+      const albedo = await import("@albedo-link/intent");
+      const result = await albedo.default.signMessage({
+        message,
+      });
+      signature = result.message_signature;
+    } else {
+      throw new Error("Message signing not supported for this wallet type");
+    }
+    
+    if (!signature) {
+      throw new Error("Failed to sign message");
+    }
+    
+    return { signature, nonce, timestamp };
+  };
+
   const value = useMemo(
     () => ({
       connected,
@@ -251,8 +290,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       connect,
       disconnect,
       clearError,
+      signAction,
     }),
-    [connected, publicKey, walletName, connecting, error],
     [connected, publicKey, walletName, connecting, error, token],
   );
 

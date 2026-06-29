@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ShareRepository } from "../share.repository";
-import { SnippetRepository } from "../snippet.repository";
-import { ShareService } from "../share.service";
+import { ShareRepository } from "../../share.repository";
+import { SnippetRepository } from "../../snippet.repository";
+import { ShareService } from "../../share.service";
 
 const repository = new SnippetRepository();
 const shareRepository = new ShareRepository();

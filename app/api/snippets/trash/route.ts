@@ -13,7 +13,7 @@ const service = new SnippetService(repository);
 export async function GET(req: NextRequest) {
   try {
     // Extract wallet address
-    const walletAddress = OwnershipMiddleware.extractWalletAddress(req);
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
 
     if (!walletAddress) {
       return NextResponse.json(

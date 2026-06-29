@@ -25,6 +25,7 @@ export async function middleware(req: NextRequest) {
     "/api/profile",  // Profile routes
     "/dashboard",    // Dashboard routes
     "/api/logs",     // Activity logs (auth required for all methods)
+    "/api/favorites", // Favorites (auth required for all methods)
   ];
 
   // Check if current route is protected
@@ -44,6 +45,11 @@ export async function middleware(req: NextRequest) {
 
   // /api/logs requires auth on ALL methods (including GET)
   if (pathname.startsWith("/api/logs")) {
+    return verifyAuthenticationMiddleware(req);
+  }
+
+  // /api/favorites requires auth on ALL methods (including GET)
+  if (pathname.startsWith("/api/favorites")) {
     return verifyAuthenticationMiddleware(req);
   }
 

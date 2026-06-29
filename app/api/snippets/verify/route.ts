@@ -78,14 +78,7 @@ export async function POST(req: NextRequest) {
       ip
     );
 
-    // Log verification attempt
-    await activityLogger.log({
-      action: "snippet_verification_success",
-      snippetId: validatedData.snippetId,
-      walletAddress: validatedData.walletAddress,
-      ipAddress: ip,
-      timestamp: new Date(),
-    });
+    
 
     console.log(
       `[API] Snippet verification successful for snippet: ${validatedData.snippetId}`
