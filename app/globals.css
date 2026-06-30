@@ -297,3 +297,49 @@
     color: #4f46e5;
   }
 }
+
+
+/* Skeleton Loader Css*/
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes content-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Base Skeleton Shimmer Block */
+.skeleton-base {
+  animation: skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background-color: #e5e7eb;
+  border-radius: 0.375rem;
+  display: inline-block;
+  width: 100%;
+}
+
+/* Smooth Transition Wrapper */
+.skeleton-fade-in {
+  animation: content-fade-in 0.35s ease-out forwards;
+}
+
+/* Dark mode configurations */
+@media (prefers-color-scheme: dark) {
+  .skeleton-base {
+    background-color: #374151;
+  }
+}
+
+
