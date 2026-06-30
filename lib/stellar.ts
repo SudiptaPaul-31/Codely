@@ -1,4 +1,6 @@
+
 import crypto from "crypto";
+
 import * as StellarSdk from "stellar-sdk";
 
 const STELLAR_NETWORK = process.env.NEXT_PUBLIC_STELLAR_NETWORK || "testnet";
@@ -21,6 +23,94 @@ export interface StellarSubmitResult {
   timestamp?: string;
   memo?: string;
   error?: string;
+}
+
+
+/**
+ * Submit an immutable ownership-transfer memo/proof on Stellar.
+ * Memo format (truncated/compacted to Stellar memo_text length limits):
+ * `tr:<snippetId8>:<oldOwner8>:<newOwner8>`
+ */
+export async function submitOwnershipTransferMemoToStellar({
+  secretKey,
+  snippetId,
+  oldOwnerWalletAddress,
+  newOwnerWalletAddress,
+}: {
+  secretKey?: string;
+  snippetId: string;
+  oldOwnerWalletAddress: string;
+  newOwnerWalletAddress: string;
+}): Promise<StellarSubmitResult> {
+  const key = secretKey || STELLAR_SECRET_KEY;
+
+  // Fall back to deterministic mock when no key configured.
+  if (!key) {
+    const timestamp = new Date().toISOString();
+    const memo = buildOwnershipTransferMemo(snippetId, oldOwnerWalletAddress, newOwnerWalletAddress);
+    const txHash = crypto
+      .createHash("sha256")
+      .update(`${snippetId}:${oldOwnerWalletAddress}:${newOwnerWalletAddress}:${timestamp}`)
+      .digest("hex");
+
+    console.warn(
+      "[Stellar] Ownership transfer proof: no secret key configured — using deterministic mock.",
+    );
+
+    return {
+      success: true,
+      transactionHash: txHash,
+      timestamp,
+      memo,
+    };
+  }
+
+  try {
+    const server = new StellarSdk.Horizon.Server(HORIZON_URL);
+    const keypair = StellarSdk.Keypair.fromSecret(key);
+    const account = await server.loadAccount(keypair.publicKey());
+
+    const timestamp = new Date().toISOString();
+    const memoText = buildOwnershipTransferMemo(
+      snippetId,
+      oldOwnerWalletAddress,
+      newOwnerWalletAddress,
+    );
+
+    const transaction = new StellarSdk.TransactionBuilder(account, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(
+        StellarSdk.Operation.manageData({
+          name: `own:${snippetId.slice(0, 20)}`,
+          value: `${oldOwnerWalletAddress.slice(0, 12)}->${newOwnerWalletAddress.slice(0, 12)}`,
+        }),
+      )
+      .addMemo(StellarSdk.Memo.text(memoText))
+      .setTimeout(30)
+      .build();
+
+    transaction.sign(keypair);
+
+    const response = await server.submitTransaction(transaction);
+
+    return {
+      success: true,
+      transactionHash: response.hash,
+      ledger: response.ledger,
+      timestamp,
+      memo: memoText,
+    };
+  } catch (error: any) {
+    console.error("[Stellar] Ownership transfer submission failed:", error?.message);
+    const resultCodes = error?.response?.data?.extras?.result_codes;
+    const details = resultCodes ? JSON.stringify(resultCodes) : error?.message;
+    return {
+      success: false,
+      error: `Stellar ownership transfer failed: ${details}`,
+    };
+  }
 }
 
 /**
@@ -215,82 +305,18 @@ function generateBatchHash(hashes: string[]): string {
   return crypto.createHash("sha256").update(combined).digest("hex");
 }
 
-// ─── Collection on-chain anchoring ──────────────────────────────────────────
-
-export interface CollectionAnchorResult {
-  success: boolean;
-  transactionHash?: string;
-  ledger?: number;
-  timestamp?: string;
-  anchor?: string;
-  error?: string;
+function buildOwnershipTransferMemo(
+  snippetId: string,
+  oldOwnerWalletAddress: string,
+  newOwnerWalletAddress: string,
+): string {
+  const shortSnippet = snippetId.replace(/-/g, "").slice(0, 8);
+  const shortOld = oldOwnerWalletAddress.slice(0, 8);
+  const shortNew = newOwnerWalletAddress.slice(0, 8);
+  // Stellar memo_text max length is 28 bytes; this stays compact.
+  return `tr:${shortSnippet}:${shortOld}:${shortNew}`.slice(0, 28);
 }
 
-/**
- * Anchor a collection's metadata on Stellar by storing a manageData entry
- * keyed by the collection id and containing a SHA-256 hash of its metadata.
- * The memo encodes the owner wallet so the anchor is verifiably linked to it.
- */
-export async function submitCollectionToStellar(
-  secretKey: string,
-  collectionId: string,
-  ownerWallet: string,
-  title: string,
-  description: string,
-  tags: string[],
-): Promise<CollectionAnchorResult> {
-  const key = secretKey || STELLAR_SECRET_KEY;
-
-  const metadataHash = crypto
-    .createHash("sha256")
-    .update(JSON.stringify({ collectionId, ownerWallet, title, description, tags }))
-    .digest("hex");
-
-  if (!key) {
-    return mockCollectionSubmit(collectionId, ownerWallet, metadataHash);
-  }
-
-  try {
-    const server = new StellarSdk.Horizon.Server(HORIZON_URL);
-    const keypair = StellarSdk.Keypair.fromSecret(key);
-    const account = await server.loadAccount(keypair.publicKey());
-
-    const timestamp = new Date().toISOString();
-    const shortOwner = ownerWallet.slice(0, 8);
-    const shortId = collectionId.replace(/-/g, "").slice(0, 8);
-    const memoText = `col:${shortId}:${shortOwner}`.slice(0, 28);
-
-    const transaction = new StellarSdk.TransactionBuilder(account, {
-      fee: StellarSdk.BASE_FEE,
-      networkPassphrase: NETWORK_PASSPHRASE,
-    })
-      .addOperation(
-        StellarSdk.Operation.manageData({
-          name: `col:${collectionId.slice(0, 20)}`,
-          value: metadataHash.slice(0, 64),
-        }),
-      )
-      .addMemo(StellarSdk.Memo.text(memoText))
-      .setTimeout(30)
-      .build();
-
-    transaction.sign(keypair);
-    const response = await server.submitTransaction(transaction);
-
-    return {
-      success: true,
-      transactionHash: response.hash,
-      ledger: response.ledger,
-      timestamp,
-      anchor: metadataHash,
-    };
-  } catch (error: any) {
-    console.error("[Stellar] Collection anchor failed:", error?.message);
-    const resultCodes = error?.response?.data?.extras?.result_codes;
-    const details = resultCodes ? JSON.stringify(resultCodes) : error?.message;
-    return { success: false, error: `Stellar collection anchor failed: ${details}` };
-  }
-}
 
 // ─── Mock fallbacks (no secret key configured) ──────────────────────────────
 
@@ -314,27 +340,6 @@ function mockStellarSubmit(
     transactionHash: txHash,
     timestamp,
     memo: buildMemo(snippetId, contentHash, timestamp),
-  };
-}
-
-function mockCollectionSubmit(
-  collectionId: string,
-  ownerWallet: string,
-  metadataHash: string,
-): CollectionAnchorResult {
-  const timestamp = new Date().toISOString();
-  const txHash = crypto
-    .createHash("sha256")
-    .update(`${collectionId}:${ownerWallet}:${metadataHash}:${timestamp}`)
-    .digest("hex");
-
-  console.warn("[Stellar] No secret key configured — using deterministic mock for collection anchor.");
-
-  return {
-    success: true,
-    transactionHash: txHash,
-    timestamp,
-    anchor: metadataHash,
   };
 }
 
