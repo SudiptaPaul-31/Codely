@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyJWT, sha256Hex } from "@/lib/auth";
 import { neon } from "@neondatabase/serverless";
 
-const sql = neon(process.env.DATABASE_URL!);
+// Lazy initialize sql only when needed
+let sql: ReturnType<typeof neon> | null = null;
+function getSql() {
+  if (!sql && process.env.DATABASE_URL) {
+    sql = neon(process.env.DATABASE_URL!);
+  }
+  return sql;
+}
 
 /**
  * Next.js Middleware for Stellar Wallet Authentication
@@ -25,6 +32,7 @@ export async function middleware(req: NextRequest) {
     "/api/profile",  // Profile routes
     "/dashboard",    // Dashboard routes
     "/api/logs",     // Activity logs (auth required for all methods)
+    "/api/favorites", // Favorites (auth required for all methods)
   ];
 
   // Check if current route is protected
@@ -44,6 +52,11 @@ export async function middleware(req: NextRequest) {
 
   // /api/logs requires auth on ALL methods (including GET)
   if (pathname.startsWith("/api/logs")) {
+    return verifyAuthenticationMiddleware(req);
+  }
+
+  // /api/favorites requires auth on ALL methods (including GET)
+  if (pathname.startsWith("/api/favorites")) {
     return verifyAuthenticationMiddleware(req);
   }
 
@@ -92,22 +105,25 @@ async function verifyAuthenticationMiddleware(req: NextRequest) {
 
     // Verify session exists in database (additional security check)
     try {
-      const tokenHash = await sha256Hex(token);
+      const db = getSql();
+      if (db) {
+        const tokenHash = await sha256Hex(token);
 
-      const session = await sql`
-        SELECT * FROM auth_sessions 
-        WHERE token_hash = ${tokenHash} 
-        AND expires_at > now()
-      `;
+        const session = await db`
+          SELECT * FROM auth_sessions 
+          WHERE token_hash = ${tokenHash} 
+          AND expires_at > now()
+        `;
 
-      if (session.length === 0) {
-        return NextResponse.json(
-          {
-            error: "Unauthorized - Session not found or expired",
-            details: "Your session has expired. Please authenticate again.",
-          },
-          { status: 401 },
-        );
+        if (session.length === 0) {
+          return NextResponse.json(
+            {
+              error: "Unauthorized - Session not found or expired",
+              details: "Your session has expired. Please authenticate again.",
+            },
+            { status: 401 },
+          );
+        }
       }
     } catch (dbError) {
       console.error("Database session verification error:", dbError);

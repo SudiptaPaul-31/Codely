@@ -31,7 +31,7 @@ export async function GET(
     );
 
     // Get activity history
-    const history = await ActivityLogger.getSnippetHistory(id, limit);
+    const history = await (ActivityLogger as any).getSnippetHistory(id, limit);
 
     return NextResponse.json({
       snippetId: id,

@@ -32,7 +32,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const walletAddress = OwnershipMiddleware.extractWalletAddress(req);
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
 
     if (!walletAddress) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -64,7 +64,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const walletAddress = OwnershipMiddleware.extractWalletAddress(req);
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
 
     if (!walletAddress) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -106,7 +106,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const walletAddress = OwnershipMiddleware.extractWalletAddress(req);
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
 
     if (!walletAddress) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

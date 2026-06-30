@@ -22,10 +22,10 @@ function isValidUUID(id: string): boolean {
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     // Validate snippet ID is UUID format
     if (!isValidUUID(id)) {

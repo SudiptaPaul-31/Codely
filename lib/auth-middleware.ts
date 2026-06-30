@@ -19,7 +19,7 @@ export async function verifyAuthentication(req: NextRequest) {
     const token = authHeader.substring(7); // Remove "Bearer " prefix
 
     // Verify JWT
-    const verification = verifyJWT(token);
+    const verification = await verifyJWT(token);
     if (!verification.valid) {
       return null;
     }
@@ -55,9 +55,10 @@ export async function verifyAuthentication(req: NextRequest) {
 /**
  * Higher-order function to protect API routes
  * Usage: const protectedGET = withAuth(GET);
+ * Supports both simple routes and dynamic routes with params.
  */
-export function withAuth(handler: (req: NextRequest) => Promise<NextResponse>) {
-  return async (req: NextRequest) => {
+export function withAuth(handler: (req: NextRequest, ...args: any[]) => Promise<NextResponse>) {
+  return async (req: NextRequest, ...args: any[]) => {
     const auth = await verifyAuthentication(req);
 
     if (!auth) {
@@ -69,7 +70,7 @@ export function withAuth(handler: (req: NextRequest) => Promise<NextResponse>) {
 
     // Add auth payload to request for use in handler
     (req as any).auth = auth;
-    return handler(req);
+    return handler(req, ...args);
   };
 }
 
@@ -77,7 +78,7 @@ export function withAuth(handler: (req: NextRequest) => Promise<NextResponse>) {
  * Middleware that checks JWT for all requests and returns 401 if invalid
  * Add to middleware.ts or use in route groups
  */
-export function authMiddleware(req: NextRequest) {
+export async function authMiddleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
 
   // Define protected routes
@@ -101,7 +102,7 @@ export function authMiddleware(req: NextRequest) {
   }
 
   const token = authHeader.substring(7);
-  const verification = verifyJWT(token);
+  const verification = await verifyJWT(token);
 
   if (!verification.valid) {
     return NextResponse.json(

@@ -14,7 +14,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Trash2, Copy, Plus } from "lucide-react";
+import { Trash2, Copy, Plus, Download } from "lucide-react";
+import { exportSnippet } from "@/lib/utils";
+import { toast } from "sonner";
+import { Trash2, Copy, Plus, Star } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import Loader from "@/components/ui/loader";
 import CardSkeleton from "@/components/skeletons/CardSkeleton";
@@ -89,6 +92,7 @@ export default function SnippetsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verificationStatuses, setVerificationStatuses] = useState<Record<string, VerificationStatus>>({});
+  const [favoriteStatuses, setFavoriteStatuses] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchSnippets();
@@ -125,6 +129,38 @@ export default function SnippetsPage() {
     }
   };
 
+  const fetchFavoriteStatuses = async (snippetIds: string[]) => {
+    try {
+      const res = await fetch("/api/favorites/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snippetIds }),
+      });
+      if (res.ok) {
+        const statuses = await res.json();
+        setFavoriteStatuses((prev) => ({ ...prev, ...statuses }));
+      }
+    } catch (err) {
+      console.error("Failed to fetch favorite statuses:", err);
+    }
+  };
+
+  const toggleFavorite = async (snippetId: string) => {
+    try {
+      const res = await fetch("/api/favorites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snippetId }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setFavoriteStatuses((prev) => ({ ...prev, [snippetId]: result.favorited }));
+      }
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+    }
+  };
+
   const fetchSnippets = async (loadMore = false) => {
     try {
       if (loadMore) {
@@ -151,6 +187,7 @@ export default function SnippetsPage() {
       setHasMore(data.hasMore);
       setOffset(currentOffset + data.data.length);
       await fetchVerificationStatuses(data.data);
+      await fetchFavoriteStatuses(data.data.map((s) => s.id));
     } catch (e) {
       console.error(e);
     } finally {
@@ -213,15 +250,54 @@ export default function SnippetsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this snippet?")) return;
+    
+    let signatureData = null;
+    
+    // Request wallet signature if connected
+    if (wallet?.connected && wallet?.signAction) {
+      try {
+        signatureData = await wallet.signAction("delete_snippet", id);
+      } catch (err: any) {
+        console.error("Signature failed:", err);
+        alert(`Signature required to delete snippet: ${err.message}`);
+        return; // Abort deletion if signature fails
+      }
+    }
+    
     try {
-      const res = await fetch(`/api/snippets/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete");
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      
+      // Include signature headers if available
+      if (signatureData) {
+        headers["x-wallet-signature"] = signatureData.signature;
+        headers["x-wallet-nonce"] = signatureData.nonce;
+        headers["x-wallet-timestamp"] = signatureData.timestamp.toString();
+        headers["x-wallet-address"] = wallet.publicKey;
+      }
+      
+      // Add standard auth header if token exists
+      if (wallet?.token) {
+        headers["Authorization"] = `Bearer ${wallet.token}`;
+      }
+      
+      const res = await fetch(`/api/snippets/${id}`, { 
+        method: "DELETE",
+        headers
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.error || errorData?.message || "Failed to delete snippet");
+      }
       
       setOffset(0);
       setHasMore(true);
       await fetchSnippets();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert(e.message || "An error occurred");
     }
   };
 
@@ -230,6 +306,16 @@ export default function SnippetsPage() {
       await navigator.clipboard.writeText(code);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleExport = (snippet: Snippet) => {
+    try {
+      exportSnippet(snippet);
+      toast.success(`Exported "${snippet.title}" successfully!`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to export snippet. Please try again.");
     }
   };
 
@@ -443,6 +529,9 @@ export default function SnippetsPage() {
                       <div className="p-6 space-y-4">
                         <div className="space-y-3">
                           <div className="flex items-start justify-between gap-4">
+                    <div className="p-6 space-y-4">
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-4">
                             <div className="min-w-0">
                               <h3 className="text-lg font-semibold text-white mb-1 truncate">
                                 {snippet.title}
@@ -451,6 +540,24 @@ export default function SnippetsPage() {
                                 {snippet.description || "No description"}
                               </p>
                             </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFavorite(snippet.id);
+                              }}
+                              className={
+                                favoriteStatuses[snippet.id]
+                                  ? "text-amber-400 hover:text-amber-300"
+                                  : "text-gray-400 hover:text-gray-300"
+                              }
+                            >
+                              <Star
+                                className="w-5 h-5"
+                                fill={favoriteStatuses[snippet.id] ? "currentColor" : "none"}
+                              />
+                            </Button>
                             {verificationStatus.verified && (
                               <VerificationBadge
                                 verified={verificationStatus.verified}
@@ -522,6 +629,14 @@ export default function SnippetsPage() {
                               }}
                               className="flex-1"
                             />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-block bg-purple-600/50 text-purple-100 text-xs px-3 py-1 rounded-full">
+                            {snippet.language}
+                          </span>
+                          {isOwner && !verificationStatus.verified && (
+                            <span className="text-xs text-slate-400">
+                              Owns snippet — ready to verify
+                            </span>
                           )}
                           <Button
                             onClick={() => handleEdit(snippet)}
@@ -569,6 +684,69 @@ export default function SnippetsPage() {
                   Showing all {total} snippets
                 </p>
               )}
+                    <p className="text-xs text-gray-500 border-t border-purple-500/20 pt-4">
+                      Created: {new Date(snippet.created_at).toLocaleDateString()}
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-4 border-t border-purple-500/20">
+                      <Button
+                        onClick={() => handleCopy(snippet.code)}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 border-purple-400/50 text-purple-300 hover:bg-purple-400/10"
+                      >
+                        <Copy className="w-4 h-4 mr-2" /> Copy
+                      </Button>
+                      <Button
+                        onClick={() => handleExport(snippet)}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 border-blue-400/50 text-blue-300 hover:bg-blue-400/10"
+                      >
+                        <Download className="w-4 h-4 mr-2" /> Export
+                      </Button>
+                      <VersionHistoryPanel
+                        snippetId={snippet.id}
+                        onRestore={() => fetchSnippets()}
+                      />
+                      {snippet.owner_wallet_address && (
+                        <PermissionsManager
+                          snippetId={snippet.id}
+                          snippetTitle={snippet.title}
+                          ownerWalletAddress={snippet.owner_wallet_address}
+                        />
+                      )}
+                      {!verificationStatus.verified && (
+                        <VerifyOwnershipButton
+                          snippetId={snippet.id}
+                          isOwner={isOwner}
+                          onSuccess={() => {
+                            setOffset(0);
+                            setHasMore(true);
+                            fetchSnippets();
+                          }}
+                          className="flex-1"
+                        />
+                      )}
+                      <Button
+                        onClick={() => handleEdit(snippet)}
+                        size="sm"
+                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        onClick={() => handleDelete(snippet.id)}
+                        variant="destructive"
+                        size="sm"
+                        className="flex-1"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
             </div>
           )}
         </div>

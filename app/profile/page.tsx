@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Wallet,
   FileCode,
@@ -11,17 +11,17 @@ import {
   Check,
   ArrowUpRight,
   Activity,
+  Award,
 } from "lucide-react";
 
-// Mock data matching the acceptance criteria definitions
+// Mock data matching the acceptance criteria definitions for non-reputation stats
 const MOCK_PROFILE = {
   walletAddress: "GBXQ...4V5N3ST3LL4RW4LL3T7777777775PK2",
   fullWallet: "GBXQ234V5N3ST3LL4RW4LL3T7777777775PK2E6XN",
   stats: {
     totalSnippets: 42,
-    completionScore: 94, // Percentage
+    completionScore: 94,
     activeDisputes: 0,
-    reputationPoints: 1250,
   },
   recentActivities: [
     {
@@ -31,25 +31,34 @@ const MOCK_PROFILE = {
       timestamp: "2 hours ago",
       language: "TypeScript",
     },
-    {
-      id: "act-2",
-      type: "verify",
-      title: "Validated Soroban Smart Contract Auth Signature",
-      timestamp: "1 day ago",
-      language: "Rust",
-    },
-    {
-      id: "act-3",
-      type: "dispute_resolved",
-      title: "Dispute #104 closed in favor of author",
-      timestamp: "3 days ago",
-      language: "Go",
-    },
   ],
 };
 
 export default function ProfilePage() {
   const [copied, setCopied] = useState(false);
+  const [reputationData, setReputationData] = useState<{score: number, badge: string, actions: any[]}>({
+    score: 0,
+    badge: "Newcomer",
+    actions: [],
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadReputation() {
+      try {
+        const res = await fetch(`/api/reputation/${MOCK_PROFILE.fullWallet}`);
+        if (res.ok) {
+          const data = await res.json();
+          setReputationData(data);
+        }
+      } catch (e) {
+        console.error("Failed to load reputation", e);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadReputation();
+  }, []);
 
   const handleCopyWallet = async () => {
     try {
@@ -61,6 +70,15 @@ export default function ProfilePage() {
     }
   };
 
+  const getBadgeColor = (badge: string) => {
+    switch(badge) {
+      case "Gold": return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+      case "Silver": return "bg-gray-400/20 text-gray-300 border-gray-400/30";
+      case "Bronze": return "bg-orange-600/20 text-orange-400 border-orange-600/30";
+      default: return "bg-indigo-500/10 text-indigo-400 border-indigo-500/20";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 selection:bg-indigo-500/30 selection:text-indigo-200">
       {/* Background Radial Glow Effects for Landing Page Consistency */}
@@ -68,12 +86,8 @@ export default function ProfilePage() {
       <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="container mx-auto max-w-6xl py-8 px-4 sm:px-6 lg:py-12 lg:px-8 relative z-10">
-        {/* ========================================================= */}
-        {/* SECTION 1: USER PROFILE HEADER & PROMINENT WALLET BAR      */}
-        {/* ========================================================= */}
         <header className="mb-10 p-6 md:p-8 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md animate-fade-in">
           <div className="flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left">
-            {/* Avatar block with matching gradient ring animations */}
             <div className="relative group">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full blur opacity-75 group-hover:opacity-100 transition duration-500 animate-pulse" />
               <div className="relative w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center border border-zinc-800">
@@ -82,15 +96,24 @@ export default function ProfilePage() {
             </div>
 
             <div className="flex-1 min-w-0">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping" />
-                Live Contributor Profile
-              </span>
+              <div className="flex items-center gap-2 mb-2 justify-center sm:justify-start">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping" />
+                  Live Contributor Profile
+                </span>
+                
+                {!isLoading && (
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${getBadgeColor(reputationData.badge)}`}>
+                    <Award className="w-3 h-3" />
+                    {reputationData.badge} Status
+                  </span>
+                )}
+              </div>
+              
               <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
                 Account Dashboard
               </h1>
 
-              {/* Prominent copyable Wallet verification display layout */}
               <div className="mt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-950/80 border border-zinc-800 text-zinc-400 font-mono text-sm">
                   <Wallet className="h-4 w-4 text-purple-400 shrink-0" />
@@ -115,9 +138,6 @@ export default function ProfilePage() {
           </div>
         </header>
 
-        {/* ========================================================= */}
-        {/* SECTION 2: RESPONSIBLE ACCOUNT STATISTICS GRID             */}
-        {/* ========================================================= */}
         <section className="mb-10" aria-label="Account statistics summary">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2">
             <span>Performance Metadata</span>
@@ -160,7 +180,6 @@ export default function ProfilePage() {
             </div>
 
             {/* Stat Card: Active Disputes */}
-            {/* Stat Card: Active Disputes */}
             <div className="group p-6 rounded-2xl border border-zinc-800 bg-zinc-900/20 hover:border-zinc-700/60 hover:bg-zinc-900/40 transition-all duration-300 transform hover:-translate-y-1">
               <div className="flex items-center justify-between mb-4">
                 <div
@@ -195,7 +214,7 @@ export default function ProfilePage() {
                 </span>
               </div>
               <p className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent tracking-tight">
-                {MOCK_PROFILE.stats.reputationPoints}
+                {isLoading ? "..." : reputationData.score}
               </p>
               <h3 className="text-sm font-medium text-zinc-400 mt-1">
                 Reputation Score
@@ -204,9 +223,6 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        {/* ========================================================= */}
-        {/* SECTION 3: RECENT ACTIVITY TIMELINE LIST LAYER             */}
-        {/* ========================================================= */}
         <section aria-label="Recent user activity history">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-500 flex items-center gap-2">
@@ -219,9 +235,9 @@ export default function ProfilePage() {
           </div>
 
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/20 divide-y divide-zinc-800/60 overflow-hidden">
-            {MOCK_PROFILE.recentActivities.map((activity) => (
+            {reputationData.actions.length > 0 ? reputationData.actions.map((activity, idx) => (
               <div
-                key={activity.id}
+                key={idx}
                 className="p-4 sm:p-5 flex items-start gap-4 hover:bg-zinc-900/40 transition-colors duration-200 group"
               >
                 <div className="mt-1 shrink-0 w-2 h-2 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 group-hover:scale-125 transition-transform duration-200" />
@@ -229,15 +245,15 @@ export default function ProfilePage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                     <p className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">
-                      {activity.title}
+                      {activity.action}
                     </p>
                     <span className="text-xs text-zinc-500 whitespace-nowrap shrink-0">
-                      {activity.timestamp}
+                      {new Date(activity.created_at).toLocaleDateString()}
                     </span>
                   </div>
                   <div className="mt-1 flex items-center gap-2">
-                    <span className="text-xs px-2 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/40 text-zinc-400 font-mono">
-                      {activity.language}
+                    <span className="text-xs px-2 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/40 text-emerald-400 font-mono">
+                      {activity.points > 0 ? "+" : ""}{activity.points} pts
                     </span>
                   </div>
                 </div>
@@ -246,7 +262,34 @@ export default function ProfilePage() {
                   <ArrowUpRight className="h-4 w-4 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 </div>
               </div>
-            ))}
+            )) : MOCK_PROFILE.recentActivities.map((activity) => (
+               <div
+                 key={activity.id}
+                 className="p-4 sm:p-5 flex items-start gap-4 hover:bg-zinc-900/40 transition-colors duration-200 group"
+               >
+                 <div className="mt-1 shrink-0 w-2 h-2 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 group-hover:scale-125 transition-transform duration-200" />
+ 
+                 <div className="flex-1 min-w-0">
+                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                     <p className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">
+                       {activity.title}
+                     </p>
+                     <span className="text-xs text-zinc-500 whitespace-nowrap shrink-0">
+                       {activity.timestamp}
+                     </span>
+                   </div>
+                   <div className="mt-1 flex items-center gap-2">
+                     <span className="text-xs px-2 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/40 text-zinc-400 font-mono">
+                       {activity.language}
+                     </span>
+                   </div>
+                 </div>
+ 
+                 <div className="shrink-0 text-zinc-600 group-hover:text-zinc-400 transition-colors pl-2">
+                   <ArrowUpRight className="h-4 w-4 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                 </div>
+               </div>
+             ))}
           </div>
         </section>
       </div>

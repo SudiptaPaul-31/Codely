@@ -2,6 +2,7 @@ import { appendActivityLog, extractIp, extractUserAgent } from "@/lib/activity-l
 import { rateLimit } from "@/lib/rateLimiter";
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
+import { createTransaction } from "@/lib/db";
 import { OwnershipMiddleware } from "./ownership.middleware";
 import { SnippetRepository } from "./snippet.repository";
 import { SnippetService } from "./snippet.service";
@@ -120,6 +121,19 @@ export async function POST(req: NextRequest) {
 
     const snippet = await service.createSnippet(body);
 
+    // Log transaction if wallet address provided
+    if (walletAddress) {
+      try {
+        await createTransaction(
+          walletAddress,
+          "snippet_create",
+          `Created snippet ${snippet.id}`,
+          { snippetId: snippet.id },
+        );
+      } catch (err) {
+        console.error("[transactions] Failed to log snippet_create:", err);
+      }
+    }
     // Log snippet creation (fire-and-forget — never throws)
     await appendActivityLog("snippet.created", "snippet", {
       actorWallet: walletAddress,
