@@ -215,6 +215,83 @@ function generateBatchHash(hashes: string[]): string {
   return crypto.createHash("sha256").update(combined).digest("hex");
 }
 
+// ─── Collection on-chain anchoring ──────────────────────────────────────────
+
+export interface CollectionAnchorResult {
+  success: boolean;
+  transactionHash?: string;
+  ledger?: number;
+  timestamp?: string;
+  anchor?: string;
+  error?: string;
+}
+
+/**
+ * Anchor a collection's metadata on Stellar by storing a manageData entry
+ * keyed by the collection id and containing a SHA-256 hash of its metadata.
+ * The memo encodes the owner wallet so the anchor is verifiably linked to it.
+ */
+export async function submitCollectionToStellar(
+  secretKey: string,
+  collectionId: string,
+  ownerWallet: string,
+  title: string,
+  description: string,
+  tags: string[],
+): Promise<CollectionAnchorResult> {
+  const key = secretKey || STELLAR_SECRET_KEY;
+
+  const metadataHash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify({ collectionId, ownerWallet, title, description, tags }))
+    .digest("hex");
+
+  if (!key) {
+    return mockCollectionSubmit(collectionId, ownerWallet, metadataHash);
+  }
+
+  try {
+    const server = new StellarSdk.Horizon.Server(HORIZON_URL);
+    const keypair = StellarSdk.Keypair.fromSecret(key);
+    const account = await server.loadAccount(keypair.publicKey());
+
+    const timestamp = new Date().toISOString();
+    const shortOwner = ownerWallet.slice(0, 8);
+    const shortId = collectionId.replace(/-/g, "").slice(0, 8);
+    const memoText = `col:${shortId}:${shortOwner}`.slice(0, 28);
+
+    const transaction = new StellarSdk.TransactionBuilder(account, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(
+        StellarSdk.Operation.manageData({
+          name: `col:${collectionId.slice(0, 20)}`,
+          value: metadataHash.slice(0, 64),
+        }),
+      )
+      .addMemo(StellarSdk.Memo.text(memoText))
+      .setTimeout(30)
+      .build();
+
+    transaction.sign(keypair);
+    const response = await server.submitTransaction(transaction);
+
+    return {
+      success: true,
+      transactionHash: response.hash,
+      ledger: response.ledger,
+      timestamp,
+      anchor: metadataHash,
+    };
+  } catch (error: any) {
+    console.error("[Stellar] Collection anchor failed:", error?.message);
+    const resultCodes = error?.response?.data?.extras?.result_codes;
+    const details = resultCodes ? JSON.stringify(resultCodes) : error?.message;
+    return { success: false, error: `Stellar collection anchor failed: ${details}` };
+  }
+}
+
 // ─── Mock fallbacks (no secret key configured) ──────────────────────────────
 
 function mockStellarSubmit(
@@ -237,6 +314,27 @@ function mockStellarSubmit(
     transactionHash: txHash,
     timestamp,
     memo: buildMemo(snippetId, contentHash, timestamp),
+  };
+}
+
+function mockCollectionSubmit(
+  collectionId: string,
+  ownerWallet: string,
+  metadataHash: string,
+): CollectionAnchorResult {
+  const timestamp = new Date().toISOString();
+  const txHash = crypto
+    .createHash("sha256")
+    .update(`${collectionId}:${ownerWallet}:${metadataHash}:${timestamp}`)
+    .digest("hex");
+
+  console.warn("[Stellar] No secret key configured — using deterministic mock for collection anchor.");
+
+  return {
+    success: true,
+    transactionHash: txHash,
+    timestamp,
+    anchor: metadataHash,
   };
 }
 
