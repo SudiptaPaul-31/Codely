@@ -1,6 +1,16 @@
 import { neon } from "@neondatabase/serverless";
 
-const sql = neon(process.env.DATABASE_URL!);
+// Lazy initialize sql only when needed
+let sql: ReturnType<typeof neon> | null = null;
+function getSql() {
+  if (!sql) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL environment variable is not set");
+    }
+    sql = neon(process.env.DATABASE_URL!);
+  }
+  return sql;
+}
 
 // ====== JWT & Token Management ======
 
@@ -42,11 +52,14 @@ export async function generateJWT(walletAddress: string): Promise<string> {
   const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
   try {
-    await sql`
-      INSERT INTO auth_sessions (wallet_address, token_hash, expires_at)
-      VALUES (${walletAddress}, ${tokenHash}, ${expiresAt})
-      ON CONFLICT (token_hash) DO NOTHING
-    `;
+    const db = getSql();
+    if (db) {
+      await db`
+        INSERT INTO auth_sessions (wallet_address, token_hash, expires_at)
+        VALUES (${walletAddress}, ${tokenHash}, ${expiresAt})
+        ON CONFLICT (token_hash) DO NOTHING
+      `;
+    }
   } catch (error) {
     console.error("Error storing session:", error);
   }
@@ -102,10 +115,13 @@ export async function generateNonce(): Promise<string> {
   const expiresAt = new Date(Date.now() + NONCE_EXPIRY);
 
   try {
-    await sql`
-      INSERT INTO login_nonces (nonce, expires_at)
-      VALUES (${nonce}, ${expiresAt})
-    `;
+    const db = getSql();
+    if (db) {
+      await db`
+        INSERT INTO login_nonces (nonce, expires_at)
+        VALUES (${nonce}, ${expiresAt})
+      `;
+    }
   } catch (error) {
     console.error("Error creating nonce:", error);
   }
@@ -120,7 +136,12 @@ export async function verifyNonce(
   nonce: string,
 ): Promise<{ valid: boolean; error?: string }> {
   try {
-    const result = await sql`
+    const db = getSql();
+    if (!db) {
+      return { valid: true }; // Skip verification if no DB
+    }
+    
+    const result = await db`
       SELECT * FROM login_nonces 
       WHERE nonce = ${nonce} 
       AND used = false 
@@ -132,7 +153,7 @@ export async function verifyNonce(
     }
 
     // Mark nonce as used
-    await sql`
+    await db`
       UPDATE login_nonces 
       SET used = true 
       WHERE nonce = ${nonce}
@@ -152,8 +173,13 @@ export async function verifyNonce(
  */
 export async function getOrCreateUser(walletAddress: string) {
   try {
+    const db = getSql();
+    if (!db) {
+      return { wallet_address: walletAddress }; // Mock user if no DB
+    }
+    
     // Try to find existing user
-    const existing = await sql`
+    const existing = await db`
       SELECT * FROM users WHERE wallet_address = ${walletAddress}
     `;
 
@@ -162,7 +188,7 @@ export async function getOrCreateUser(walletAddress: string) {
     }
 
     // Create new user
-    const result = await sql`
+    const result = await db`
       INSERT INTO users (wallet_address) 
       VALUES (${walletAddress})
       RETURNING *
@@ -249,8 +275,11 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
  */
 export async function cleanupExpiredSessions(): Promise<void> {
   try {
-    await sql`DELETE FROM auth_sessions WHERE expires_at < now()`;
-    await sql`DELETE FROM login_nonces WHERE expires_at < now()`;
+    const db = getSql();
+    if (db) {
+      await db`DELETE FROM auth_sessions WHERE expires_at < now()`;
+      await db`DELETE FROM login_nonces WHERE expires_at < now()`;
+    }
   } catch (error) {
     console.error("Error cleaning up expired sessions:", error);
   }

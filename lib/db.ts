@@ -7,7 +7,7 @@ import crypto from "crypto";
 
 export async function getSnippetById(id: string) {
   try {
-    const result = await sql`SELECT * FROM snippets WHERE id = ${id}`;
+    const result = await getSql()`SELECT * FROM snippets WHERE id = ${id}`;
     return result[0] as any;
   } catch (error) {
     console.error("Error fetching snippet:", error);
@@ -26,7 +26,7 @@ export async function updateSnippet(
   try {
     const updatedAt = new Date();
     console.log("[v0] Updating snippet:", { id, title, language });
-    const result = await sql`
+    const result = await getSql()`
       UPDATE snippets 
       SET title = ${title}, description = ${description}, code = ${code}, language = ${language}, tags = ${tags}, updated_at = ${updatedAt} 
       WHERE id = ${id} 
@@ -42,7 +42,7 @@ export async function updateSnippet(
 
 export async function deleteSnippet(id: string) {
   try {
-    await sql`DELETE FROM snippets WHERE id = ${id}`;
+    await getSql()`DELETE FROM snippets WHERE id = ${id}`;
     return true;
   } catch (error) {
     console.error("Error deleting snippet:", error);
@@ -68,7 +68,7 @@ export async function createSnippetVersion(
     const versionNumber = await getNextVersionNumber(snippetId);
     const createdAt = new Date();
 
-    const result = await sql`
+    const result = await getSql()`
       INSERT INTO snippet_versions (id, snippet_id, content, editor_id, version_number, created_at)
       VALUES (${id}, ${snippetId}, ${JSON.stringify(content)}, ${editorId}, ${versionNumber}, ${createdAt})
       RETURNING *
@@ -88,7 +88,7 @@ export async function createSnippetVersion(
 
 export async function getNextVersionNumber(snippetId: string): Promise<number> {
   try {
-    const result = await sql`
+    const result = await getSql()`
       SELECT COALESCE(MAX(version_number), 0) + 1 as next_version
       FROM snippet_versions
       WHERE snippet_id = ${snippetId}
@@ -109,7 +109,7 @@ export async function getVersionHistory(
     const offset = (page - 1) * pageSize;
 
     // Get total count
-    const countResult = await sql`
+    const countResult = await getSql()`
       SELECT COUNT(*) as total
       FROM snippet_versions
       WHERE snippet_id = ${snippetId}
@@ -117,7 +117,7 @@ export async function getVersionHistory(
     const total = parseInt(countResult[0]?.total || "0");
 
     // Get paginated versions
-    const result = await sql`
+    const result = await getSql()`
       SELECT * FROM snippet_versions
       WHERE snippet_id = ${snippetId}
       ORDER BY version_number DESC
@@ -138,7 +138,7 @@ export async function getVersionHistory(
 
 export async function getVersionById(versionId: string) {
   try {
-    const result = await sql`
+    const result = await getSql()`
       SELECT * FROM snippet_versions WHERE id = ${versionId}
     `;
     return result[0] as any;
@@ -164,7 +164,7 @@ export async function restoreVersion(
 
     // Update the snippet (this will also create a new version via the API)
     const updatedAt = new Date();
-    const result = await sql`
+    const result = await getSql()`
       UPDATE snippets
       SET title = ${content.title},
           description = ${content.description},
@@ -200,7 +200,7 @@ export async function createTransaction(
     const id = crypto.randomUUID();
     const createdAt = new Date();
 
-    const result = await sql`
+    const result = await getSql()`
       INSERT INTO transactions (id, wallet_address, type, description, metadata, created_at)
       VALUES (${id}, ${walletAddress}, ${type}, ${description}, ${metadata ? JSON.stringify(metadata) : null}, ${createdAt})
       RETURNING *
@@ -221,7 +221,7 @@ export async function updateSnippetNft(
   metadata: object,
 ) {
   try {
-    const result = await sql`
+    const result = await getSql()`
       UPDATE snippets
       SET nft_transaction_hash = ${txHash},
           nft_metadata = ${JSON.stringify(metadata)},
@@ -244,14 +244,14 @@ export async function getTransactionsByWallet(
   try {
     const offset = (page - 1) * pageSize;
 
-    const countResult = await sql`
+    const countResult = await getSql()`
       SELECT COUNT(*) as total
       FROM transactions
       WHERE wallet_address = ${walletAddress}
     `;
     const total = parseInt(countResult[0]?.total || "0");
 
-    const result = await sql`
+    const result = await getSql()`
       SELECT * FROM transactions
       WHERE wallet_address = ${walletAddress}
       ORDER BY created_at DESC
@@ -277,7 +277,7 @@ export async function getTransactionsByWallet(
  */
 export async function getSnippetWithHash(id: string) {
   try {
-    const result = await sql`
+    const result = await getSql()`
       SELECT id, title, description, code, language, tags,
              owner_wallet_address, created_at, updated_at,
              on_chain_hash, transaction_hash, verified_at
@@ -303,7 +303,7 @@ export async function storeSnippetHash(
 ) {
   try {
     // Guard: do not overwrite an existing verified record
-    const existing = await sql`
+    const existing = await getSql()`
       SELECT on_chain_hash FROM snippets WHERE id = ${id}
     `;
     if (existing[0]?.on_chain_hash) {
@@ -313,7 +313,7 @@ export async function storeSnippetHash(
     }
 
     const verifiedAt = new Date();
-    const result = await sql`
+    const result = await getSql()`
       UPDATE snippets
       SET on_chain_hash    = ${onChainHash},
           transaction_hash = ${transactionHash},
@@ -342,7 +342,7 @@ export async function verifySnippetIntegrity(
   try {
     const { generateSnippetHash } = await import("@/lib/hash");
 
-    const snippet = await sql`
+    const snippet = await getSql()`
       SELECT on_chain_hash FROM snippets WHERE id = ${id}
     `;
 
@@ -380,7 +380,7 @@ export async function verifySnippetIntegrity(
  */
 export async function getVerifiedSnippets() {
   try {
-    const result = await sql`
+    const result = await getSql()`
       SELECT id, title, language, on_chain_hash, transaction_hash, verified_at, created_at
       FROM snippets
       WHERE on_chain_hash IS NOT NULL

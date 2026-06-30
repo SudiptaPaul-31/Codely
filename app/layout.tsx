@@ -2,9 +2,13 @@ import React from "react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
-import { Toaster } from "sonner";
+import { Toaster as SonnerToaster } from "sonner";
 import ClientWalletProvider from "@/components/ClientWalletProvider";
+<<<<<<< Codely
+import { Toaster as UiToaster } from "@/components/ui/sonner";
+=======
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+>>>>>>> main
 import "./globals.css";
 
 const geistSans = Geist({
@@ -43,9 +47,9 @@ export default function RootLayout({
 				<ClientWalletProvider>
 					{children}
 				</ClientWalletProvider>
-				<Toaster position="top-right" richColors />
+				<SonnerToaster position="top-right" richColors />
 				<Analytics />
-				<Toaster expand closeButton />
+				<UiToaster expand closeButton />
 			</body>
 		</html>
 	);

@@ -14,7 +14,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+<<<<<<< Codely
+import { Trash2, Copy, Plus, Download } from "lucide-react";
+import { exportSnippet } from "@/lib/utils";
+import { toast } from "sonner";
+=======
 import { Trash2, Copy, Plus, Star } from "lucide-react";
+>>>>>>> main
 import { Sidebar } from "@/components/Sidebar";
 import Loader from "@/components/ui/loader";
 import { VersionHistoryPanel } from "@/components/VersionHistory";
@@ -305,6 +311,16 @@ export default function SnippetsPage() {
       await navigator.clipboard.writeText(code);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleExport = (snippet: Snippet) => {
+    try {
+      exportSnippet(snippet);
+      toast.success(`Exported "${snippet.title}" successfully!`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to export snippet. Please try again.");
     }
   };
 
@@ -630,6 +646,14 @@ transition-all duration-200"
                         className="flex-1 border-purple-400/50 text-purple-300 hover:bg-purple-400/10"
                       >
                         <Copy className="w-4 h-4 mr-2" /> Copy
+                      </Button>
+                      <Button
+                        onClick={() => handleExport(snippet)}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 border-blue-400/50 text-blue-300 hover:bg-blue-400/10"
+                      >
+                        <Download className="w-4 h-4 mr-2" /> Export
                       </Button>
                       <VersionHistoryPanel
                         snippetId={snippet.id}

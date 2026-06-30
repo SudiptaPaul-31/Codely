@@ -7,6 +7,7 @@ import {
 	Code2,
 	Home,
 	FileCode2,
+	Layers,
 	ChevronLeft,
 	ChevronRight,
 	Menu,
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
 	{ label: "Home", href: "/", icon: Home },
 	{ label: "Snippets", href: "/snippets", icon: FileCode2 },
+	{ label: "Collections", href: "/collections", icon: Layers },
 	{ label: "Favorites", href: "/favorites", icon: Star },
 ];
 
