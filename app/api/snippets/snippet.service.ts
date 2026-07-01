@@ -5,12 +5,14 @@ import {
   SearchSnippetsOptions,
 } from "./snippet.repository";
 import { createSnippetSchema, updateSnippetSchema } from "./snippet.validator";
-import { ActivityLogger } from "@/lib/activity-logger";
+import { appendActivityLog } from "@/lib/activity-logger";
 
 export class SnippetService {
   constructor(private snippetRepository: SnippetRepository) {}
 
-  async getAllSnippets(options?: PaginationOptions): Promise<PaginatedResult<any>> {
+  async getAllSnippets(
+    options?: PaginationOptions,
+  ): Promise<PaginatedResult<any>> {
     try {
       return await this.snippetRepository.findAll(options);
     } catch (error) {
@@ -19,7 +21,9 @@ export class SnippetService {
     }
   }
 
-  async searchSnippets(options: SearchSnippetsOptions): Promise<PaginatedResult<any>> {
+  async searchSnippets(
+    options: SearchSnippetsOptions,
+  ): Promise<PaginatedResult<any>> {
     try {
       return await this.snippetRepository.search(options);
     } catch (error) {
@@ -79,6 +83,7 @@ export class SnippetService {
    */
   async deleteSnippet(id: string, userWalletAddress: string | null = null) {
     try {
+      const deleted = await this.snippetRepository.softDelete(
       const deleted = await this.snippetRepository.softDelete(id, userWalletAddress);
       if (!deleted) {
         throw new Error("Snippet not found");
@@ -86,14 +91,22 @@ export class SnippetService {
 
       await ActivityLogger.log(
         id,
-        "DELETE",
         userWalletAddress,
+      );
+
+      // 3. Log the delete action using appendActivityLog
+      await appendActivityLog("snippet.deleted", "snippet", {
+        actorWallet: userWalletAddress,
+        resourceId: id,
+        metadata: {
+          title: existing.title,
+          language: existing.language,
         {
           title: deleted.title,
           language: deleted.language,
           deletedAt: new Date().toISOString(),
         },
-      );
+      });
 
       return deleted;
     } catch (error) {
@@ -121,6 +134,16 @@ export class SnippetService {
         throw new Error("Snippet is not deleted");
       }
 
+      // Restore via Repository
+      const restored = await this.snippetRepository.restore(id);
+
+      // Log the restore action using appendActivityLog
+      await appendActivityLog("snippet.restored", "snippet", {
+        actorWallet: userWalletAddress,
+        resourceId: id,
+        metadata: {
+          title: snippet.title,
+          language: snippet.language,
       await ActivityLogger.log(
         id,
         "RESTORE",
@@ -130,7 +153,7 @@ export class SnippetService {
           language: restored.language,
           restoredAt: new Date().toISOString(),
         },
-      );
+      });
 
       return restored;
     } catch (error) {
@@ -183,6 +206,18 @@ export class SnippetService {
         throw new Error("Snippet not found");
       }
 
+      // Permanently delete
+      const deleted = await this.snippetRepository.permanentlyDelete(id);
+
+      // Log the permanent delete using appendActivityLog
+      await appendActivityLog("snippet.deleted", "snippet", {
+        // Use 'snippet.deleted' here
+        actorWallet: null,
+        resourceId: id,
+        metadata: {
+          title: snippet.title,
+          language: snippet.language,
+          permanentlyDeleted: true, // This flag still captures that it was a hard delete!
       await ActivityLogger.log(
         id,
         "DELETE",
@@ -193,7 +228,7 @@ export class SnippetService {
           permanentlyDeleted: true,
           deletedAt: new Date().toISOString(),
         },
-      );
+      });
 
       return deleted;
     } catch (error) {

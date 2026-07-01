@@ -1,16 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 
-// Lazy initialize sql only when needed
-let sql: ReturnType<typeof neon> | null = null;
-function getSql() {
-  if (!sql) {
-    if (!process.env.DATABASE_URL) {
-      throw new Error("DATABASE_URL environment variable is not set");
-    }
-    sql = neon(process.env.DATABASE_URL!);
-  }
-  return sql;
-}
+// Initialise the Neon DB client
+const sql = neon(process.env.DATABASE_URL!);
 
 export type ActivityAction =
   | "DELETE"
@@ -24,6 +15,8 @@ export type ActivityAction =
   | "snippet.deleted"
   | "snippet.soft_deleted"
   | "snippet.restored"
+  | "snippet.owner_transfer"
+  | "snippet.owner_transfer_failed"
   | "wallet.connected"
   | "wallet.disconnected"
   | "signature.verified"
@@ -66,7 +59,7 @@ export class ActivityLogger {
         };
       }
 
-      const result = await db`
+      const result = await sql`
         INSERT INTO activity_logs (id, snippet_id, action, user_wallet_address, details, created_at)
         VALUES (${id}, ${snippetId}, ${action}, ${userWalletAddress}, ${JSON.stringify(details)}, ${createdAt})
         RETURNING *
@@ -107,6 +100,16 @@ export function extractUserAgent(headers: Headers): string | null {
 
 export type ResourceType = "snippet" | "wallet";
 
+/** Resource types that can be referenced by a log entry. */
+export type ResourceType = "snippet" | "wallet";
+
+/**
+ * Append an immutable activity log entry.
+ *
+ * This function performs **only** an INSERT – it never updates or deletes rows.
+ * Errors are caught and logged so that log failures never interrupt the primary
+ * business logic (fire‑and‑forget semantics).
+ */
 export async function appendActivityLog(
   action: ActivityAction,
   resourceType: ResourceType,
@@ -116,7 +119,7 @@ export async function appendActivityLog(
     metadata?: Record<string, unknown>;
     ipAddress?: string | null;
     userAgent?: string | null;
-  }
+  },
 ): Promise<void> {
   const {
     actorWallet = null,
@@ -127,28 +130,26 @@ export async function appendActivityLog(
   } = ctx;
 
   try {
-    const db = getSql();
-    if (db) {
-      await db`
-        INSERT INTO activity_logs (
-          actor_wallet,
-          action,
-          resource_type,
-          resource_id,
-          metadata,
-          ip_address,
-          user_agent
-        ) VALUES (
-          ${actorWallet},
-          ${action},
-          ${resourceType},
-          ${resourceId},
-          ${JSON.stringify(metadata)}::jsonb,
-          ${ipAddress},
-          ${userAgent}
-        )`;
-    }
+    await sql`
+      INSERT INTO activity_logs (
+        actor_wallet,
+        action,
+        resource_type,
+        resource_id,
+        metadata,
+        ip_address,
+        user_agent
+      ) VALUES (
+        ${actorWallet},
+        ${action},
+        ${resourceType},
+        ${resourceId},
+        ${JSON.stringify(metadata)}::jsonb,
+        ${ipAddress},
+        ${userAgent}
+      )`;
   } catch (err) {
     console.error("[ActivityLog] Failed to write log entry:", err);
   }
 }
+

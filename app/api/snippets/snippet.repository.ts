@@ -32,6 +32,41 @@ export class SnippetRepository {
     this.sql = neon(process.env.DATABASE_URL!);
   }
 
+  /**
+   * Atomically transfer snippet ownership.
+   * Guard ensures the current owner matches oldOwnerWalletAddress.
+   */
+  async transferOwnershipAtomic(params: {
+    snippetId: string;
+    oldOwnerWalletAddress: string;
+    newOwnerWalletAddress: string;
+  }) {
+    const updatedAt = new Date();
+
+    const result = await this.sql`
+      UPDATE snippets
+      SET owner_wallet_address = ${params.newOwnerWalletAddress},
+          updated_at = ${updatedAt}
+      WHERE id = ${params.snippetId}
+        AND is_deleted = false
+        AND owner_wallet_address = ${params.oldOwnerWalletAddress}
+      RETURNING *
+    `;
+
+    return result[0] || null;
+  }
+
+  async findOwnerWalletAddress(snippetId: string) {
+    const result = await this.sql`
+      SELECT owner_wallet_address
+      FROM snippets
+      WHERE id = ${snippetId}
+        AND is_deleted = false
+    `;
+    return result[0]?.owner_wallet_address || null;
+  }
+
+
   async findAll(options?: PaginationOptions) {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
