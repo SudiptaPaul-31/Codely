@@ -25,25 +25,39 @@ export type ActivityAction =
 export interface ActivityLogEntry {
   id: string;
   snippetId: string;
-  action: ActivityAction;
+  action: string;
   userWalletAddress: string | null;
   details: Record<string, any>;
   createdAt: Date;
 }
 
 export class ActivityLogger {
-  /**
-   * Log an activity action for audit trail
-   */
   static async log(
     snippetId: string,
-    action: ActivityAction,
+    action: string,
     userWalletAddress: string | null = null,
     details: Record<string, any> = {},
   ): Promise<ActivityLogEntry> {
     try {
       const id = crypto.randomUUID();
       const createdAt = new Date();
+      const db = getSql();
+
+      if (!db) {
+        console.log(`[ActivityLog] ${action} logged for snippet ${snippetId} (no DB)`, {
+          id,
+          userWalletAddress,
+          details,
+        });
+        return {
+          id,
+          snippetId,
+          action,
+          userWalletAddress,
+          details,
+          createdAt,
+        };
+      }
 
       const result = await sql`
         INSERT INTO activity_logs (id, snippet_id, action, user_wallet_address, details, created_at)
@@ -72,10 +86,19 @@ export class ActivityLogger {
   }
 }
 
-/** Extract the User‑Agent string from request headers. */
+export function extractIp(headers: Headers): string {
+  return (
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
 export function extractUserAgent(headers: Headers): string | null {
   return headers.get("user-agent") ?? null;
 }
+
+export type ResourceType = "snippet" | "wallet";
 
 /** Resource types that can be referenced by a log entry. */
 export type ResourceType = "snippet" | "wallet";
@@ -127,7 +150,6 @@ export async function appendActivityLog(
       )`;
   } catch (err) {
     console.error("[ActivityLog] Failed to write log entry:", err);
-    // Swallow the error – logging must not block the main operation.
   }
 }
 

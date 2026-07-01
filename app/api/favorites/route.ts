@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error("[API] Error fetching favorites:", error);
     return NextResponse.json(
-      { error: "Failed to fetch favorites" },
+      { error: error instanceof Error ? error.message : "Internal Server Error" },
       { status: 500 }
     );
   }
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("[API] Error toggling favorite:", error);
     return NextResponse.json(
-      { error: "Failed to toggle favorite" },
+      { error: error instanceof Error ? error.message : "Internal Server Error" },
       { status: 500 }
     );
   }

@@ -1,6 +1,16 @@
 import { neon } from "@neondatabase/serverless";
 
-export const sql = neon(process.env.DATABASE_URL!);
+// Lazy initialize sql only when needed
+let sql: ReturnType<typeof neon> | null = null;
+function getSql() {
+  if (!sql) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL environment variable is not set");
+    }
+    sql = neon(process.env.DATABASE_URL!);
+  }
+  return sql;
+}
 
 // Ensure crypto is available
 import crypto from "crypto";
@@ -272,9 +282,6 @@ export async function getTransactionsByWallet(
 
 // ============ On-Chain Timestamp Verification Functions ============
 
-/**
- * Fetch a snippet including its on-chain verification fields.
- */
 export async function getSnippetWithHash(id: string) {
   try {
     const result = await getSql()`
@@ -291,11 +298,6 @@ export async function getSnippetWithHash(id: string) {
   }
 }
 
-/**
- * Persist the on-chain hash and Stellar transaction hash for a snippet.
- * Immutability: if on_chain_hash is already set, this call is rejected
- * to prevent overwriting an existing proof-of-existence record.
- */
 export async function storeSnippetHash(
   id: string,
   onChainHash: string,
@@ -328,9 +330,6 @@ export async function storeSnippetHash(
   }
 }
 
-/**
- * Compare the snippet's current content hash against the stored on-chain hash.
- */
 export async function verifySnippetIntegrity(
   id: string,
   title: string,
@@ -375,9 +374,6 @@ export async function verifySnippetIntegrity(
   }
 }
 
-/**
- * Return all snippets that have been verified on the Stellar blockchain.
- */
 export async function getVerifiedSnippets() {
   try {
     const result = await getSql()`
