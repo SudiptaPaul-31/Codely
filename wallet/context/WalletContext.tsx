@@ -18,15 +18,17 @@ import { toast } from "sonner";
 import {
   WalletContextValue,
   WalletProviderType,
+  StellarNetwork,
   SESSION_EXPIRY_MS,
 } from "@/wallet/types/wallet";
 import { walletStore } from "@/wallet/store/walletStore";
-import { getPublicKey, signMessage } from "@/wallet/lib/walletAdapters";
+import { getPublicKey, signMessage, getWalletNetwork } from "@/wallet/lib/walletAdapters";
 import {
   persistSession,
   readSession,
   clearSession,
 } from "@/wallet/lib/sessionStorage";
+import { isNetworkSupported, getEnvNetwork, networkLabel } from "@/wallet/lib/networkDetection";
 
 const WalletContext = createContext<WalletContextValue | null>(null);
 
@@ -40,8 +42,56 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [connecting, setConnecting] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [network, setNetwork] = useState<StellarNetwork>("unknown");
 
   const reconnectAttempted = useRef(false);
+  const networkPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ─── Network change detection (polling for Freighter) ──────
+  const detectAndSetNetwork = useCallback(async () => {
+    if (!walletProvider) return;
+    try {
+      const detected = await getWalletNetwork(walletProvider);
+      setNetwork(detected);
+      walletStore.setState({ network: detected });
+
+      // Warn if unsupported
+      if (!isNetworkSupported(detected)) {
+        toast.warning(
+          `Connected to ${networkLabel(detected)}. Expected ${networkLabel(getEnvNetwork())}.`,
+          { duration: 8000 }
+        );
+      }
+      return detected;
+    } catch {
+      // silently ignore polling errors
+    }
+  }, [walletProvider]);
+
+  // Start/stop network polling when connected status changes
+  useEffect(() => {
+    if (connected && walletProvider) {
+      // Initial detection
+      detectAndSetNetwork();
+
+      // Poll every 15 seconds for network changes (Freighter allows switching networks)
+      networkPollRef.current = setInterval(detectAndSetNetwork, 15_000);
+    } else {
+      if (networkPollRef.current) {
+        clearInterval(networkPollRef.current);
+        networkPollRef.current = null;
+      }
+      setNetwork("unknown");
+      walletStore.setState({ network: "unknown" as StellarNetwork });
+    }
+
+    return () => {
+      if (networkPollRef.current) {
+        clearInterval(networkPollRef.current);
+        networkPollRef.current = null;
+      }
+    };
+  }, [connected, walletProvider, detectAndSetNetwork]);
 
   // ─── Auto-reconnect on mount ─────────────────────────────────
   useEffect(() => {
@@ -104,6 +154,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         });
 
         toast.success(`Reconnected to ${wn} wallet`);
+
+        // Detect and set network after reconnect (best-effort)
+        try {
+          const reconnectedNetwork = await getWalletNetwork(wp);
+          setNetwork(reconnectedNetwork);
+          walletStore.setState({ network: reconnectedNetwork });
+
+          if (!isNetworkSupported(reconnectedNetwork)) {
+            toast.warning(
+              `Connected to ${networkLabel(reconnectedNetwork)}. Expected ${networkLabel(getEnvNetwork())}.`,
+              { duration: 8000 }
+            );
+          }
+        } catch {
+          // network detection failure is non-fatal on reconnect
+        }
       } catch (err) {
         console.error("[Wallet] Auto-reconnect failed:", err);
         clearSession();
@@ -141,6 +207,23 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
               : walletType === "lobstr"
                 ? "Lobstr"
                 : walletType;
+
+        // Step 1b: Detect network
+        try {
+          const detectedNetwork = await getWalletNetwork(walletType);
+          setNetwork(detectedNetwork);
+          walletStore.setState({ network: detectedNetwork });
+
+          // Warn if network doesn't match expected
+          if (!isNetworkSupported(detectedNetwork)) {
+            toast.warning(
+              `Connected to ${networkLabel(detectedNetwork)}. Expected ${networkLabel(getEnvNetwork())}.`,
+              { duration: 8000 }
+            );
+          }
+        } catch {
+          // network detection failure is non-fatal
+        }
 
         // Step 2: Get nonce from server
         const nonceRes = await fetch("/api/auth/nonce");
@@ -241,6 +324,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setWalletProvider(null);
     setToken(null);
     setError(null);
+    setNetwork("unknown");
     walletStore.reset();
 
     toast.success("Wallet disconnected");
@@ -278,6 +362,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       connecting,
       reconnecting,
       error,
+      network,
       connect,
       disconnect,
       clearError,
@@ -292,6 +377,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       connecting,
       reconnecting,
       error,
+      network,
       connect,
       disconnect,
       clearError,

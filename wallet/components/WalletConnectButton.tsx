@@ -9,13 +9,15 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Wallet, Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import { useWallet } from "@/wallet/context/WalletContext";
+import { NetworkStatusBadge } from "@/wallet/components/NetworkStatusBadge";
+import { isNetworkSupported } from "@/wallet/lib/networkDetection";
 
 export function WalletConnectButton({
   onOpenModal,
 }: {
   onOpenModal: () => void;
 }) {
-  const { connected, publicKey, connecting, reconnecting, error } =
+  const { connected, publicKey, connecting, reconnecting, error, network } =
     useWallet();
 
   // ── Reconnect / connecting state ───────────────────────────
@@ -64,16 +66,24 @@ export function WalletConnectButton({
 
   // ── Connected state ────────────────────────────────────────
   if (connected && publicKey) {
+    const networkWarning = !isNetworkSupported(network);
     return (
-      <Button
-        onClick={onOpenModal}
-        variant="outline"
-        size="sm"
-        className="bg-purple-500/10 border-purple-500/20 text-purple-300 hover:bg-purple-500/20 hover:text-purple-200 gap-2"
-      >
-        <Wallet className="w-4 h-4" />
-        {publicKey.slice(0, 4)}...{publicKey.slice(-4)}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          onClick={onOpenModal}
+          variant="outline"
+          size="sm"
+          className={`gap-2 ${
+            networkWarning
+              ? "bg-purple-500/10 border-amber-500/30 text-purple-300 hover:bg-purple-500/20 hover:text-purple-200"
+              : "bg-purple-500/10 border-purple-500/20 text-purple-300 hover:bg-purple-500/20 hover:text-purple-200"
+          }`}
+        >
+          <Wallet className="w-4 h-4" />
+          {publicKey.slice(0, 4)}...{publicKey.slice(-4)}
+        </Button>
+        <NetworkStatusBadge />
+      </div>
     );
   }
 

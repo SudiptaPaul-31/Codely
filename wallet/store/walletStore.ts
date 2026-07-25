@@ -3,7 +3,11 @@
  * Provides a simple pub/sub pattern for the UI to react to connection changes.
  */
 
-import { WalletConnectionState, WalletProviderType } from "@/wallet/types/wallet";
+import {
+  WalletConnectionState,
+  WalletProviderType,
+  StellarNetwork,
+} from "@/wallet/types/wallet";
 
 type Listener = () => void;
 
@@ -31,6 +35,7 @@ function createStore(initial: WalletConnectionState) {
         connecting: false,
         reconnecting: false,
         error: null,
+        network: "unknown" as StellarNetwork,
       };
       listeners.forEach((l) => l());
     },
@@ -46,4 +51,5 @@ export const walletStore = createStore({
   connecting: false,
   reconnecting: false,
   error: null,
+  network: "unknown" as StellarNetwork,
 });

@@ -3,7 +3,8 @@
  * Supports Freighter, Albedo, and Lobstr (placeholder).
  */
 
-import { WalletProviderType } from "@/wallet/types/wallet";
+import { WalletProviderType, StellarNetwork } from "@/wallet/types/wallet";
+import { detectWalletNetwork } from "@/wallet/lib/networkDetection";
 
 declare global {
   interface Window {
@@ -28,6 +29,13 @@ export async function getPublicKey(
     default:
       throw new Error(`Unsupported wallet provider: ${provider}`);
   }
+}
+
+/** Get the current network from a wallet provider. */
+export async function getWalletNetwork(
+  provider: WalletProviderType
+): Promise<StellarNetwork> {
+  return detectWalletNetwork(provider);
 }
 
 /** Sign a message with a wallet provider. */
