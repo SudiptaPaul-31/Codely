@@ -58,6 +58,7 @@ async function verifyDatabaseSchema() {
       "created_at",
       "updated_at",
     ],
+    audits: ["id", "event", "wallet", "target", "details", "time"],
   };
 
   const results: TableInfo[] = [];

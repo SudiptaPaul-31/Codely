@@ -1,3 +1,4 @@
+import { logEvent } from "@/lib/audit";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { SnippetRepository } from "../../snippet.repository";
@@ -225,6 +226,7 @@ export async function POST(
       userAgent: extractUserAgent(req.headers),
     });
 
+    await logEvent("ownership_transferred", walletAddress, id, `Transferred to ${newOwnerWalletAddress}`);
     return NextResponse.json(updated, { status: 200 });
   } catch (error) {
     console.error("[OwnershipTransfer] POST error:", error);
