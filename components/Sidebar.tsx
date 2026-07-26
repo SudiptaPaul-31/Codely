@@ -13,15 +13,16 @@ import {
 	Menu,
 	X,
 	Star,
+	LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
 	{ label: "Home", href: "/", icon: Home },
+	{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
 	{ label: "Snippets", href: "/snippets", icon: FileCode2 },
 	{ label: "Collections", href: "/collections", icon: Layers },
 	{ label: "Favorites", href: "/favorites", icon: Star },
-	{ label: "Collections", href: "/collections", icon: Layers },
 ];
 
 export function Sidebar() {
