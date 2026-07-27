@@ -19,3 +19,17 @@ export const updateSnippetSchema = z.object({
 
 export type CreateSnippetDTO = z.infer<typeof createSnippetSchema>;
 export type UpdateSnippetDTO = z.infer<typeof updateSnippetSchema>;
+
+export const importSnippetSchema = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().min(1, "Title is required"),
+  code: z.string().min(1, "Code is required"),
+  language: z.string().min(1, "Language is required"),
+  metadata: z.object({
+    description: z.string().min(1, "Description is required").optional(),
+    tags: z.array(z.string()).min(1, "At least one tag is required").optional(),
+  }, { required_error: "Metadata object is required" }),
+});
+
+export type ImportSnippetDTO = z.infer<typeof importSnippetSchema>;
+

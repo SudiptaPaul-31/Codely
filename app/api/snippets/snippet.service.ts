@@ -4,7 +4,7 @@ import {
   PaginatedResult,
   SearchSnippetsOptions,
 } from "./snippet.repository";
-import { createSnippetSchema, updateSnippetSchema } from "./snippet.validator";
+import { createSnippetSchema, updateSnippetSchema, importSnippetSchema } from "./snippet.validator";
 import { appendActivityLog } from "@/lib/activity-logger";
 
 export class SnippetService {
@@ -83,25 +83,15 @@ export class SnippetService {
    */
   async deleteSnippet(id: string, userWalletAddress: string | null = null) {
     try {
-      const deleted = await this.snippetRepository.softDelete(
       const deleted = await this.snippetRepository.softDelete(id, userWalletAddress);
       if (!deleted) {
         throw new Error("Snippet not found");
       }
 
-      await ActivityLogger.log(
-        id,
-        userWalletAddress,
-      );
-
-      // 3. Log the delete action using appendActivityLog
       await appendActivityLog("snippet.deleted", "snippet", {
         actorWallet: userWalletAddress,
         resourceId: id,
         metadata: {
-          title: existing.title,
-          language: existing.language,
-        {
           title: deleted.title,
           language: deleted.language,
           deletedAt: new Date().toISOString(),
@@ -125,30 +115,13 @@ export class SnippetService {
     try {
       const restored = await this.snippetRepository.restore(id);
       if (!restored) {
-        const existing = await this.snippetRepository["sql"]`
-          SELECT is_deleted FROM snippets WHERE id = ${id}
-        `;
-        if (!existing[0]) {
-          throw new Error("Snippet not found");
-        }
-        throw new Error("Snippet is not deleted");
+        throw new Error("Snippet not found");
       }
 
-      // Restore via Repository
-      const restored = await this.snippetRepository.restore(id);
-
-      // Log the restore action using appendActivityLog
       await appendActivityLog("snippet.restored", "snippet", {
         actorWallet: userWalletAddress,
         resourceId: id,
         metadata: {
-          title: snippet.title,
-          language: snippet.language,
-      await ActivityLogger.log(
-        id,
-        "RESTORE",
-        userWalletAddress,
-        {
           title: restored.title,
           language: restored.language,
           restoredAt: new Date().toISOString(),
@@ -206,23 +179,10 @@ export class SnippetService {
         throw new Error("Snippet not found");
       }
 
-      // Permanently delete
-      const deleted = await this.snippetRepository.permanentlyDelete(id);
-
-      // Log the permanent delete using appendActivityLog
       await appendActivityLog("snippet.deleted", "snippet", {
-        // Use 'snippet.deleted' here
         actorWallet: null,
         resourceId: id,
         metadata: {
-          title: snippet.title,
-          language: snippet.language,
-          permanentlyDeleted: true, // This flag still captures that it was a hard delete!
-      await ActivityLogger.log(
-        id,
-        "DELETE",
-        null,
-        {
           title: deleted.title,
           language: deleted.language,
           permanentlyDeleted: true,
@@ -238,4 +198,131 @@ export class SnippetService {
         : new Error("Failed to permanently delete snippet");
     }
   }
+
+  /**
+   * Import multiple snippets from JSON/ZIP structures, perform Zod validation,
+   * detect duplicate records (by ID globally, or by content key locally), and batch create.
+   */
+  async importSnippets(
+    snippetsData: unknown[],
+    userWalletAddress: string,
+  ): Promise<{
+    imported: any[];
+    duplicates: any[];
+    errors: Array<{ index: number; title?: string; error: string }>;
+  }> {
+    const crypto = await import("crypto");
+
+    const validatedSnippets: any[] = [];
+    const errors: Array<{ index: number; title?: string; error: string }> = [];
+
+    // 1. Validate each snippet structure
+    for (let i = 0; i < snippetsData.length; i++) {
+      try {
+        const item = snippetsData[i];
+        const validated = importSnippetSchema.parse(item);
+        validatedSnippets.push({
+          index: i,
+          data: validated,
+        });
+      } catch (err: any) {
+        errors.push({
+          index: i,
+          title: (snippetsData[i] as any)?.title,
+          error: err instanceof Error ? err.message : "Validation failed",
+        });
+      }
+    }
+
+    if (validatedSnippets.length === 0) {
+      return { imported: [], duplicates: [], errors };
+    }
+
+    // 2. Query existing IDs and content hashes to deduplicate in-memory
+    const importedIds = validatedSnippets
+      .map((x) => x.data.id)
+      .filter((id): id is string => !!id);
+
+    const existingIds = await this.snippetRepository.checkExistingIds(importedIds);
+    const existingIdsSet = new Set(existingIds);
+
+    const existingSnippetHashes = await this.snippetRepository.getUserSnippetHashes(userWalletAddress);
+    const existingContentMap = new Set(
+      existingSnippetHashes.map(
+        (s) => `${s.title.toLowerCase()}|${s.language.toLowerCase()}|${s.code_hash}`
+      )
+    );
+
+    const snippetsToInsert: any[] = [];
+    const duplicates: any[] = [];
+
+    for (const item of validatedSnippets) {
+      const { data } = item;
+
+      // Duplicate by ID check
+      if (data.id && existingIdsSet.has(data.id)) {
+        duplicates.push({
+          title: data.title,
+          reason: `Snippet with ID ${data.id} already exists.`,
+        });
+        continue;
+      }
+
+      // Duplicate by content (title, language, code MD5 hash) check
+      const codeHash = crypto.createHash("md5").update(data.code).digest("hex");
+      const contentKey = `${data.title.toLowerCase()}|${data.language.toLowerCase()}|${codeHash}`;
+
+      if (existingContentMap.has(contentKey)) {
+        duplicates.push({
+          title: data.title,
+          reason: "A snippet with the same title, code, and language already exists for this user.",
+        });
+        continue;
+      }
+
+      // Safe fallback values
+      const finalId = data.id || crypto.randomUUID();
+      snippetsToInsert.push({
+        id: finalId,
+        title: data.title,
+        description: data.metadata?.description || "Imported snippet",
+        code: data.code,
+        language: data.language,
+        tags: data.metadata?.tags || ["imported"],
+        ownerWalletAddress: userWalletAddress,
+      });
+    }
+
+    // 3. Batch insert snippets and log activity
+    let importedResults: any[] = [];
+    if (snippetsToInsert.length > 0) {
+      try {
+        importedResults = await this.snippetRepository.createMany(snippetsToInsert);
+
+        for (const snippet of importedResults) {
+          try {
+            await appendActivityLog("snippet.created", "snippet", {
+              actorWallet: userWalletAddress,
+              resourceId: snippet.id,
+              metadata: { title: snippet.title, language: snippet.language, tags: snippet.tags },
+              ipAddress: "import",
+              userAgent: "api",
+            });
+          } catch (err) {
+            console.error("Failed to log activity for imported snippet:", err);
+          }
+        }
+      } catch (error) {
+        console.error("Error bulk inserting imported snippets:", error);
+        throw new Error("Failed to insert imported snippets");
+      }
+    }
+
+    return {
+      imported: importedResults,
+      duplicates,
+      errors,
+    };
+  }
 }
+

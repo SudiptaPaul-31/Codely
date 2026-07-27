@@ -1,5 +1,13 @@
-import { SnippetService } from "../app/api/snippets/snippet.service";
-import { SnippetRepository } from "../app/api/snippets/snippet.repository";
+import { TextDecoder, TextEncoder } from "util";
+global.TextDecoder = TextDecoder as any;
+global.TextEncoder = TextEncoder as any;
+process.env.DATABASE_URL = "postgresql://user:password@host.tld/dbname";
+
+import type { SnippetService as SnippetServiceType } from "../app/api/snippets/snippet.service";
+import type { SnippetRepository as SnippetRepositoryType } from "../app/api/snippets/snippet.repository";
+
+const { SnippetService } = require("../app/api/snippets/snippet.service");
+const { SnippetRepository } = require("../app/api/snippets/snippet.repository");
 
 // Mock the repository
 const mockRepository = {
@@ -12,7 +20,10 @@ const mockRepository = {
   softDelete: jest.fn(),
   restore: jest.fn(),
   permanentlyDelete: jest.fn(),
-} as unknown as SnippetRepository;
+  checkExistingIds: jest.fn(),
+  getUserSnippetHashes: jest.fn(),
+  createMany: jest.fn(),
+} as unknown as SnippetRepositoryType;
 
 // Suppress console.error in tests
 let consoleSpy: jest.SpyInstance;
@@ -24,7 +35,7 @@ afterAll(() => {
 });
 
 describe("SnippetService", () => {
-  let service: SnippetService;
+  let service: SnippetServiceType;
 
   beforeEach(() => {
     service = new SnippetService(mockRepository);
@@ -173,4 +184,88 @@ describe("SnippetService", () => {
       );
     });
   });
+
+  describe("importSnippets", () => {
+    const userWallet = "G1234567890123456789012345678901234567890123456789012345";
+
+    it("should successfully import snippets that are valid and not duplicates", async () => {
+      const snippetsToImport = [
+        {
+          title: "Imported 1",
+          code: "console.log('first');",
+          language: "javascript",
+          metadata: {
+            description: "First import",
+            tags: ["imp1"]
+          }
+        }
+      ];
+
+      (mockRepository.checkExistingIds as jest.Mock).mockResolvedValue([]);
+      (mockRepository.getUserSnippetHashes as jest.Mock).mockResolvedValue([]);
+      (mockRepository.createMany as jest.Mock).mockResolvedValue([
+        {
+          id: "uuid-1",
+          title: "Imported 1",
+          description: "First import",
+          code: "console.log('first');",
+          language: "javascript",
+          tags: ["imp1"],
+          ownerWalletAddress: userWallet
+        }
+      ]);
+
+      const result = await service.importSnippets(snippetsToImport, userWallet);
+
+      expect(result.imported).toHaveLength(1);
+      expect(result.duplicates).toHaveLength(0);
+      expect(result.errors).toHaveLength(0);
+      expect(mockRepository.createMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("should skip duplicates and report validation errors", async () => {
+      const snippetsToImport = [
+        {
+          // Invalid snippet (missing metadata)
+          title: "Invalid",
+          code: "test",
+          language: "javascript"
+        },
+        {
+          // Duplicate snippet by content
+          title: "Duplicate",
+          code: "console.log('duplicate');",
+          language: "javascript",
+          metadata: {
+            description: "Duplicate",
+            tags: ["dup"]
+          }
+        }
+      ];
+
+      (mockRepository.checkExistingIds as jest.Mock).mockResolvedValue([]);
+
+      const crypto = require("crypto");
+      const codeHash = crypto.createHash("md5").update("console.log('duplicate');").digest("hex");
+
+      (mockRepository.getUserSnippetHashes as jest.Mock).mockResolvedValue([
+        {
+          id: "dup-id",
+          title: "Duplicate",
+          language: "javascript",
+          code_hash: codeHash
+        }
+      ]);
+      (mockRepository.createMany as jest.Mock).mockResolvedValue([]);
+
+      const result = await service.importSnippets(snippetsToImport, userWallet);
+
+      expect(result.imported).toHaveLength(0);
+      expect(result.duplicates).toHaveLength(1);
+      expect(result.errors).toHaveLength(1);
+      expect(result.duplicates[0].title).toBe("Duplicate");
+      expect(result.errors[0].index).toBe(0);
+    });
+  });
 });
+

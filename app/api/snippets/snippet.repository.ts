@@ -354,4 +354,47 @@ export class SnippetRepository {
     `;
     return result as any[];
   }
+
+  /**
+   * Check which of the given snippet IDs already exist in the database.
+   */
+  async checkExistingIds(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const result = await this.sql`
+      SELECT id FROM snippets WHERE id = ANY(${ids})
+    `;
+    return result.map((row: any) => row.id);
+  }
+
+  /**
+   * Fetch the list of existing snippets for a user with their titles, languages, and MD5 code hashes
+   * to check for content duplicates efficiently.
+   */
+  async getUserSnippetHashes(ownerWalletAddress: string): Promise<Array<{ id: string; title: string; language: string; code_hash: string }>> {
+    const result = await this.sql`
+      SELECT id, title, language, md5(code) as code_hash 
+      FROM snippets 
+      WHERE owner_wallet_address = ${ownerWalletAddress} 
+        AND is_deleted = false
+    `;
+    return result as any[];
+  }
+
+  /**
+   * Bulk insert snippets inside a loop.
+   */
+  async createMany(snippets: Array<{ id: string; title: string; description: string; code: string; language: string; tags: string[]; ownerWalletAddress: string }>) {
+    const results = [];
+    const now = new Date();
+    for (const snippet of snippets) {
+      const result = await this.sql`
+        INSERT INTO snippets (id, title, description, code, language, tags, owner_wallet_address, created_at, updated_at) 
+        VALUES (${snippet.id}, ${snippet.title}, ${snippet.description}, ${snippet.code}, ${snippet.language}, ${snippet.tags}, ${snippet.ownerWalletAddress}, ${now}, ${now}) 
+        RETURNING *
+      `;
+      results.push(result[0]);
+    }
+    return results;
+  }
 }
+
