@@ -23,6 +23,8 @@ interface Snippet {
   owner_wallet_address: string | null;
   created_at: string;
   updated_at: string;
+  license_type?: string;
+  license_transaction_hash?: string;
 }
 
 interface PaginatedResponse {
@@ -250,6 +252,24 @@ export default function FavoritesPage() {
                               />
                             )}
                           </div>
+                          {snippet.license_type && (
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="px-1.5 py-0.5 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 font-medium">
+                                {snippet.license_type} License
+                              </span>
+                              {snippet.license_transaction_hash && (
+                                <a
+                                  href={`https://stellar.expert/explorer/testnet/tx/${snippet.license_transaction_hash}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-emerald-500/70 hover:text-emerald-400"
+                                  title="View License on Stellar"
+                                >
+                                  Licensed on-chain
+                                </a>
+                              )}
+                            </div>
+                          )}
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="inline-block bg-purple-600/50 text-purple-100 text-xs px-3 py-1 rounded-full">
                               {snippet.language}

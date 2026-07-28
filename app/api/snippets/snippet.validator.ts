@@ -7,6 +7,7 @@ export const createSnippetSchema = z.object({
   language: z.string().min(1, "Language is required"),
   tags: z.array(z.string()).min(1, "At least one tag is required"),
   ownerWalletAddress: z.string().min(1, "Owner wallet address is required"),
+  licenseType: z.string().optional(),
 });
 
 export const updateSnippetSchema = z.object({
@@ -15,6 +16,7 @@ export const updateSnippetSchema = z.object({
   code: z.string().min(1, "Code is required").optional(),
   language: z.string().min(1, "Language is required").optional(),
   tags: z.array(z.string()).min(1, "At least one tag is required").optional(),
+  licenseType: z.string().optional(),
 });
 
 export type CreateSnippetDTO = z.infer<typeof createSnippetSchema>;

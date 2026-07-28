@@ -50,6 +50,15 @@ async function runMigration() {
       console.log("✅ add-favorites.sql applied successfully");
     }
 
+    // 5. Run licenses table
+    const licensesPath = path.join(process.cwd(), "scripts", "add-licenses.sql");
+    if (fs.existsSync(licensesPath)) {
+      console.log("Applying add-licenses.sql...");
+      const licensesSql = fs.readFileSync(licensesPath, "utf-8");
+      await sql(licensesSql);
+      console.log("✅ add-licenses.sql applied successfully");
+    }
+
     console.log("Database initialized successfully!");
     process.exit(0);
   } catch (error) {

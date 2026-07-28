@@ -162,19 +162,19 @@ export class SnippetRepository {
     return result[0] || null;
   }
 
-  async create(data: CreateSnippetDTO) {
+  async create(data: CreateSnippetDTO & { licenseTransactionHash?: string; licenseMetadata?: any }) {
     const id = crypto.randomUUID();
     const createdAt = new Date();
 
     const result = await this.sql`
-      INSERT INTO snippets (id, title, description, code, language, tags, owner_wallet_address, created_at, updated_at) 
-      VALUES (${id}, ${data.title}, ${data.description}, ${data.code}, ${data.language}, ${data.tags}, ${data.ownerWalletAddress}, ${createdAt}, ${createdAt}) 
+      INSERT INTO snippets (id, title, description, code, language, tags, owner_wallet_address, license_type, license_transaction_hash, license_metadata, created_at, updated_at) 
+      VALUES (${id}, ${data.title}, ${data.description}, ${data.code}, ${data.language}, ${data.tags}, ${data.ownerWalletAddress}, ${data.licenseType || null}, ${data.licenseTransactionHash || null}, ${data.licenseMetadata ? JSON.stringify(data.licenseMetadata) : null}, ${createdAt}, ${createdAt}) 
       RETURNING *
     `;
     return result[0];
   }
 
-  async update(id: string, data: UpdateSnippetDTO) {
+  async update(id: string, data: UpdateSnippetDTO & { licenseTransactionHash?: string; licenseMetadata?: any }) {
     const updatedAt = new Date();
 
     // Build dynamic update query using tagged template
@@ -202,7 +202,7 @@ export class SnippetRepository {
       values.push(data.tags);
     }
 
-    if (updates.length === 0) {
+    if (updates.length === 0 && !data.licenseType && !data.licenseTransactionHash) {
       return this.findById(id);
     }
 
@@ -217,6 +217,9 @@ export class SnippetRepository {
           code = COALESCE(${data.code}, code),
           language = COALESCE(${data.language}, language),
           tags = COALESCE(${data.tags}, tags),
+          license_type = COALESCE(${data.licenseType || null}, license_type),
+          license_transaction_hash = COALESCE(${data.licenseTransactionHash || null}, license_transaction_hash),
+          license_metadata = COALESCE(${data.licenseMetadata ? JSON.stringify(data.licenseMetadata) : null}, license_metadata),
           updated_at = ${updatedAt}
       WHERE id = ${id} AND is_deleted = false
       RETURNING *

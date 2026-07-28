@@ -53,7 +53,30 @@ export class SnippetService {
 
     // 2. Database interaction via Repository
     try {
-      return await this.snippetRepository.create(validatedData);
+      // First create the snippet
+      let snippet = await this.snippetRepository.create(validatedData);
+
+      // If licenseType is provided, mint it and update the snippet
+      if (validatedData.licenseType && validatedData.licenseType !== "None") {
+        const { mintSnippetLicenseOnStellar } = await import("@/lib/stellar");
+        const tx = await mintSnippetLicenseOnStellar({
+          snippetId: snippet.id,
+          licenseType: validatedData.licenseType,
+          ownerWalletAddress: validatedData.ownerWalletAddress,
+        });
+
+        if (tx.success && tx.transactionHash) {
+          snippet = await this.snippetRepository.update(snippet.id, {
+            licenseTransactionHash: tx.transactionHash,
+            licenseMetadata: {
+              type: validatedData.licenseType,
+              timestamp: tx.timestamp,
+              memo: tx.memo,
+            }
+          } as any);
+        }
+      }
+      return snippet;
     } catch (error) {
       console.error("[Service] Error creating snippet:", error);
       throw new Error("Failed to create snippet");
@@ -64,10 +87,38 @@ export class SnippetService {
     const validatedData = updateSnippetSchema.parse(data);
 
     try {
-      const updated = await this.snippetRepository.update(id, validatedData);
-      if (!updated) {
+      const existing = await this.snippetRepository.findById(id);
+      if (!existing) {
         throw new Error("Snippet not found");
       }
+
+      let updated = await this.snippetRepository.update(id, validatedData);
+
+      // Mint license if it's being set for the first time
+      if (
+        validatedData.licenseType &&
+        validatedData.licenseType !== "None" &&
+        !existing.license_transaction_hash
+      ) {
+        const { mintSnippetLicenseOnStellar } = await import("@/lib/stellar");
+        const tx = await mintSnippetLicenseOnStellar({
+          snippetId: id,
+          licenseType: validatedData.licenseType,
+          ownerWalletAddress: existing.owner_wallet_address,
+        });
+
+        if (tx.success && tx.transactionHash) {
+          updated = await this.snippetRepository.update(id, {
+            licenseTransactionHash: tx.transactionHash,
+            licenseMetadata: {
+              type: validatedData.licenseType,
+              timestamp: tx.timestamp,
+              memo: tx.memo,
+            }
+          } as any);
+        }
+      }
+
       return updated;
     } catch (error) {
       if (error instanceof Error && error.message === "Snippet not found") {

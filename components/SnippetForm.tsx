@@ -63,6 +63,7 @@ export default function SnippetForm({
       code: initialValues?.code ?? "",
       language: initialValues?.language ?? "javascript",
       tags: initialValues?.tags ?? "",
+      licenseType: initialValues?.licenseType ?? "None",
     });
   }, [initialValues, reset]);
 
@@ -80,6 +81,7 @@ export default function SnippetForm({
               .map((t) => t.trim())
               .filter(Boolean)
           : [],
+        licenseType: data.licenseType === "None" ? undefined : data.licenseType,
       };
 
       const res = await fetch(
@@ -162,6 +164,28 @@ export default function SnippetForm({
                   {LANGUAGES.map((lang) => (
                     <SelectItem key={lang} value={lang}>
                       {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-white">License</Label>
+          <Controller
+            name="licenseType"
+            control={control}
+            render={({ field }) => (
+              <Select value={field.value || "None"} onValueChange={field.onChange}>
+                <SelectTrigger className="bg-slate-700/50 border-purple-500/30 text-white">
+                  <SelectValue placeholder="Select a license" />
+                </SelectTrigger>
+                <SelectContent>
+                  {["None", "MIT", "Apache-2.0", "GPL-3.0", "BSD-3-Clause"].map((lic) => (
+                    <SelectItem key={lic} value={lic}>
+                      {lic}
                     </SelectItem>
                   ))}
                 </SelectContent>
