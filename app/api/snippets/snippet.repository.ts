@@ -162,19 +162,19 @@ export class SnippetRepository {
     return result[0] || null;
   }
 
-  async create(data: CreateSnippetDTO) {
+  async create(data: CreateSnippetDTO & { licenseTransactionHash?: string; licenseMetadata?: any; ipfsCid?: string }) {
     const id = crypto.randomUUID();
     const createdAt = new Date();
 
     const result = await this.sql`
-      INSERT INTO snippets (id, title, description, code, language, tags, owner_wallet_address, created_at, updated_at) 
-      VALUES (${id}, ${data.title}, ${data.description}, ${data.code}, ${data.language}, ${data.tags}, ${data.ownerWalletAddress}, ${createdAt}, ${createdAt}) 
+      INSERT INTO snippets (id, title, description, code, language, tags, owner_wallet_address, license_type, license_transaction_hash, license_metadata, ipfs_cid, created_at, updated_at) 
+      VALUES (${id}, ${data.title}, ${data.description}, ${data.code}, ${data.language}, ${data.tags}, ${data.ownerWalletAddress}, ${data.licenseType || null}, ${data.licenseTransactionHash || null}, ${data.licenseMetadata ? JSON.stringify(data.licenseMetadata) : null}, ${data.ipfsCid || null}, ${createdAt}, ${createdAt}) 
       RETURNING *
     `;
     return result[0];
   }
 
-  async update(id: string, data: UpdateSnippetDTO) {
+  async update(id: string, data: UpdateSnippetDTO & { licenseTransactionHash?: string; licenseMetadata?: any; ipfsCid?: string }) {
     const updatedAt = new Date();
 
     // Build dynamic update query using tagged template
@@ -202,7 +202,12 @@ export class SnippetRepository {
       values.push(data.tags);
     }
 
-    if (updates.length === 0) {
+    if (data.ipfsCid !== undefined) {
+      updates.push("ipfs_cid = ${value}");
+      values.push(data.ipfsCid);
+    }
+
+    if (updates.length === 0 && !data.licenseType && !data.licenseTransactionHash) {
       return this.findById(id);
     }
 
@@ -217,6 +222,10 @@ export class SnippetRepository {
           code = COALESCE(${data.code}, code),
           language = COALESCE(${data.language}, language),
           tags = COALESCE(${data.tags}, tags),
+          license_type = COALESCE(${data.licenseType || null}, license_type),
+          license_transaction_hash = COALESCE(${data.licenseTransactionHash || null}, license_transaction_hash),
+          license_metadata = COALESCE(${data.licenseMetadata ? JSON.stringify(data.licenseMetadata) : null}, license_metadata),
+          ipfs_cid = COALESCE(${data.ipfsCid || null}, ipfs_cid),
           updated_at = ${updatedAt}
       WHERE id = ${id} AND is_deleted = false
       RETURNING *

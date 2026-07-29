@@ -362,3 +362,83 @@ function mockBatchStellarSubmit(
     memo: `batch:${batchHash.slice(0, 22)}`,
   };
 }
+
+/**
+ * Submit snippet license metadata to the Stellar blockchain.
+ */
+export async function mintSnippetLicenseOnStellar({
+  secretKey,
+  snippetId,
+  licenseType,
+  ownerWalletAddress,
+}: {
+  secretKey?: string;
+  snippetId: string;
+  licenseType: string;
+  ownerWalletAddress: string;
+}): Promise<StellarSubmitResult> {
+  const key = secretKey || STELLAR_SECRET_KEY;
+
+  if (!key) {
+    const timestamp = new Date().toISOString();
+    const memo = `lic:${snippetId.slice(0, 8)}`.slice(0, 28);
+    const txHash = crypto
+      .createHash("sha256")
+      .update(`${snippetId}:${licenseType}:${ownerWalletAddress}:${timestamp}`)
+      .digest("hex");
+
+    console.warn(
+      "[Stellar] License minting: no secret key configured — using deterministic mock.",
+    );
+
+    return {
+      success: true,
+      transactionHash: txHash,
+      timestamp,
+      memo,
+    };
+  }
+
+  try {
+    const server = new StellarSdk.Horizon.Server(HORIZON_URL);
+    const keypair = StellarSdk.Keypair.fromSecret(key);
+    const account = await server.loadAccount(keypair.publicKey());
+
+    const timestamp = new Date().toISOString();
+    const memoText = `lic:${snippetId.replace(/-/g, "").slice(0, 8)}`.slice(0, 28);
+
+    const transaction = new StellarSdk.TransactionBuilder(account, {
+      fee: StellarSdk.BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(
+        StellarSdk.Operation.manageData({
+          name: `lic:${snippetId.slice(0, 20)}`,
+          value: licenseType.slice(0, 64),
+        }),
+      )
+      .addMemo(StellarSdk.Memo.text(memoText))
+      .setTimeout(30)
+      .build();
+
+    transaction.sign(keypair);
+
+    const response = await server.submitTransaction(transaction);
+
+    return {
+      success: true,
+      transactionHash: response.hash,
+      ledger: response.ledger,
+      timestamp,
+      memo: memoText,
+    };
+  } catch (error: any) {
+    console.error("[Stellar] License minting failed:", error?.message);
+    const resultCodes = error?.response?.data?.extras?.result_codes;
+    const details = resultCodes ? JSON.stringify(resultCodes) : error?.message;
+    return {
+      success: false,
+      error: `Stellar license minting failed: ${details}`,
+    };
+  }
+}
