@@ -6,6 +6,7 @@ import {
 } from "@/lib/auth";
 import { verifyWalletSignature } from "@/lib/stellar-auth";
 import { appendActivityLog, extractIp, extractUserAgent } from "@/lib/activity-logger";
+import { logEvent } from "@/lib/audit";
 
 interface VerifyRequest {
   publicKey: string;
@@ -13,33 +14,28 @@ interface VerifyRequest {
   nonce: string;
 }
 
-/**
- * POST /api/auth/verify
- * Verify wallet signature and issue JWT token
- */
 export async function POST(req: NextRequest) {
   try {
     const body: VerifyRequest = await req.json();
     const { publicKey, signature, nonce } = body;
 
-    // Validate input
     if (!publicKey || !signature || !nonce) {
+      await logEvent("login_failed", "UNKNOWN", undefined, "Missing required fields");
       return NextResponse.json(
         { error: "Missing required fields: publicKey, signature, nonce" },
         { status: 400 },
       );
     }
 
-    // Verify nonce (prevents replay attacks)
     const nonceVerification = await verifyNonce(nonce);
     if (!nonceVerification.valid) {
+      await logEvent("login_failed", publicKey, undefined, "Invalid nonce");
       return NextResponse.json(
         { error: nonceVerification.error || "Invalid nonce" },
         { status: 401 },
       );
     }
 
-    // Verify wallet signature
     const message = `Sign this nonce to login to Codely: ${nonce}`;
     const signatureVerification = await verifyWalletSignature(
       message,
@@ -48,16 +44,14 @@ export async function POST(req: NextRequest) {
     );
 
     if (!signatureVerification.valid) {
+      await logEvent("login_failed", publicKey, undefined, "Invalid signature");
       return NextResponse.json(
         { error: signatureVerification.error || "Invalid signature" },
         { status: 401 },
       );
     }
 
-    // Get or create user
     const user = await getOrCreateUser(publicKey);
-
-    // Generate JWT token
     const token = await generateJWT(publicKey);
 
     await appendActivityLog("wallet.connected", "wallet", {
@@ -68,7 +62,8 @@ export async function POST(req: NextRequest) {
       userAgent: extractUserAgent(req.headers),
     });
 
-    // Return token and user info
+    await logEvent("login_success", publicKey, undefined, "Wallet verified and JWT issued");
+
     return NextResponse.json(
       {
         token,
@@ -82,6 +77,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (error: any) {
     console.error("Verification error:", error);
+    await logEvent("login_error", "UNKNOWN", undefined, error.message);
     return NextResponse.json(
       { error: error.message || "Authentication failed" },
       { status: 500 },

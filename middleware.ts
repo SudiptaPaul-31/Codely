@@ -33,6 +33,7 @@ export async function middleware(req: NextRequest) {
     "/dashboard",    // Dashboard routes
     "/api/logs",     // Activity logs (auth required for all methods)
     "/api/favorites", // Favorites (auth required for all methods)
+    "/api/folders",  // Folder management (auth required for all methods)
   ];
 
   // Check if current route is protected
@@ -57,6 +58,11 @@ export async function middleware(req: NextRequest) {
 
   // /api/favorites requires auth on ALL methods (including GET)
   if (pathname.startsWith("/api/favorites")) {
+    return verifyAuthenticationMiddleware(req);
+  }
+
+  // /api/folders requires auth on ALL methods (including GET) — folders are always private
+  if (pathname.startsWith("/api/folders")) {
     return verifyAuthenticationMiddleware(req);
   }
 

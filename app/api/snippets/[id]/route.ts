@@ -134,7 +134,7 @@ export async function PUT(
       }
       // Log the restore action
       await appendActivityLog("snippet.restored", "snippet", {
-        actorWallet: await await OwnershipMiddleware.extractWalletAddress(req),
+        actorWallet: await OwnershipMiddleware.extractWalletAddress(req),
         resourceId:  id,
         metadata:    { versionId, editorId: editorId || null },
         ipAddress:   extractIp(req.headers),
@@ -146,7 +146,7 @@ export async function PUT(
 
     // Default: update snippet via service
     // Extract wallet address and verify ownership
-    const walletAddress = await await OwnershipMiddleware.extractWalletAddress(req);
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
 
     if (!walletAddress) {
       return NextResponse.json(
@@ -219,7 +219,7 @@ export async function DELETE(
     const { id } = await params;
 
     // Extract wallet address and verify ownership
-    const walletAddress = await await OwnershipMiddleware.extractWalletAddress(req);
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
 
     if (!walletAddress) {
       return NextResponse.json(

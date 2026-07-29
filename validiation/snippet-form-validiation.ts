@@ -16,6 +16,8 @@ export const snippetSchema = z.object({
   language: z.string().min(1, "Language is required"),
 
   tags: z.string().optional(),
+
+  licenseType: z.string().optional(),
 });
 
 export type SnippetFormValues = z.infer<typeof snippetSchema>;

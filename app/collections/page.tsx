@@ -31,6 +31,8 @@ interface Snippet {
   language: string;
   description: string;
   tags: string[];
+  license_type?: string;
+  license_transaction_hash?: string;
 }
 
 export default function CollectionsPage() {
@@ -337,10 +339,33 @@ export default function CollectionsPage() {
                           className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-800 border border-slate-700"
                         >
                           <div className="min-w-0">
-                            <p className="text-sm font-medium text-slate-200 truncate">
-                              {snippet.title}
-                            </p>
-                            <p className="text-xs text-slate-500">{snippet.language}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-slate-200 truncate">
+                                {snippet.title}
+                              </p>
+                              {snippet.license_type && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-300">
+                                  {snippet.license_type}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                              <span>{snippet.language}</span>
+                              {snippet.license_transaction_hash && (
+                                <>
+                                  <span>&middot;</span>
+                                  <a
+                                    href={`https://stellar.expert/explorer/testnet/tx/${snippet.license_transaction_hash}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 text-emerald-500/70 hover:text-emerald-400"
+                                    title="View License on Stellar"
+                                  >
+                                    <Globe className="w-3 h-3" /> Licensed on-chain
+                                  </a>
+                                </>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <Link href={`/snippets#${snippet.id}`}>

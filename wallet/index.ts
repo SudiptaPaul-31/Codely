@@ -3,6 +3,7 @@
 // Types
 export type {
   WalletProviderType,
+  StellarNetwork,
   WalletSession,
   EncryptedWalletData,
   WalletConnectionState,
@@ -35,3 +36,17 @@ export { getPublicKey, signMessage } from "@/wallet/lib/walletAdapters";
 
 // Components
 export { WalletConnectButton } from "@/wallet/components/WalletConnectButton";
+export {
+  NetworkStatusBadge,
+  NetworkIndicator,
+} from "@/wallet/components/NetworkStatusBadge";
+
+// Network detection
+export {
+  detectWalletNetwork,
+  getEnvNetwork,
+  isNetworkSupported,
+  networkLabel,
+  networkShortLabel,
+  passphraseToNetwork,
+} from "@/wallet/lib/networkDetection";
