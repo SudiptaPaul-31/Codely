@@ -4,6 +4,13 @@
 
 export type WalletProviderType = "freighter" | "albedo" | "lobstr";
 
+/**
+ * Detected Stellar network.
+ * - testnet / mainnet: known, supported networks
+ * - unknown: the wallet is on a network we cannot identify (e.g. futurenet, standalone)
+ */
+export type StellarNetwork = "testnet" | "mainnet" | "unknown";
+
 export interface WalletSession {
   publicKey: string;
   walletName: string;
@@ -28,6 +35,7 @@ export interface WalletConnectionState {
   connecting: boolean;
   reconnecting: boolean;
   error: string | null;
+  network: StellarNetwork;
 }
 
 export interface WalletActions {
