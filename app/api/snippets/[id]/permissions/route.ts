@@ -8,16 +8,19 @@ import {
 } from "@/lib/permissions.service";
 import { z } from "zod";
 
+const stellarAddressRegex = /^G[A-Z2-7]{55}$/;
+
 const grantSchema = z.object({
   granteeWalletAddress: z
     .string()
-    .min(56, "Invalid Stellar wallet address")
-    .max(56, "Invalid Stellar wallet address"),
+    .regex(stellarAddressRegex, "Wallet address must be a valid Stellar format (starts with G, 56 characters)"),
   permissionType: z.enum(["view", "edit"]),
 });
 
 const revokeSchema = z.object({
-  granteeWalletAddress: z.string().min(56).max(56),
+  granteeWalletAddress: z
+    .string()
+    .regex(stellarAddressRegex, "Wallet address must be a valid Stellar format (starts with G, 56 characters)"),
   permissionType: z.enum(["view", "edit"]),
 });
 
