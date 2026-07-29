@@ -1,3 +1,4 @@
+import { logEvent } from "@/lib/audit";
 import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
 import { CreateSnippetDTO, UpdateSnippetDTO } from "./snippet.validator";
@@ -171,6 +172,7 @@ export class SnippetRepository {
       VALUES (${id}, ${data.title}, ${data.description}, ${data.code}, ${data.language}, ${data.tags}, ${data.ownerWalletAddress}, ${data.licenseType || null}, ${data.licenseTransactionHash || null}, ${data.licenseMetadata ? JSON.stringify(data.licenseMetadata) : null}, ${data.ipfsCid || null}, ${createdAt}, ${createdAt}) 
       RETURNING *
     `;
+    await logEvent("snippet_created", data.ownerWalletAddress, id, data.title);
     return result[0];
   }
 
@@ -230,6 +232,7 @@ export class SnippetRepository {
       WHERE id = ${id} AND is_deleted = false
       RETURNING *
     `;
+    if (result[0]) await logEvent("snippet_updated", result[0].owner_wallet_address, id, "Snippet updated");
     return result[0] || null;
   }
 
@@ -237,6 +240,7 @@ export class SnippetRepository {
     const result = await this.sql`
       DELETE FROM snippets WHERE id = ${id} AND is_deleted = false RETURNING *
     `;
+    if (result[0]) await logEvent("snippet_deleted", result[0].owner_wallet_address, id, "Snippet permanently deleted");
     return result[0] || null;
   }
 
@@ -252,6 +256,7 @@ export class SnippetRepository {
       WHERE id = ${id}
       RETURNING *
     `;
+    if (result[0]) await logEvent("snippet_soft_deleted", deletedBy || result[0].owner_wallet_address, id, "Snippet soft deleted");
     return result[0] || null;
   }
 
@@ -265,6 +270,7 @@ export class SnippetRepository {
       WHERE id = ${id} AND is_deleted = true
       RETURNING *
     `;
+    if (result[0]) await logEvent("snippet_restored", result[0].owner_wallet_address, id, "Snippet restored");
     return result[0] || null;
   }
 
