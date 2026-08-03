@@ -13,8 +13,9 @@ import {
   renameFolder,
   reorderFolder,
 } from "@/lib/snippet-folders";
+import { recordRecentSnippet } from "@/lib/recent-snippets-storage";
 
-interface SnippetSummary { id: string; title: string; language: string; }
+interface SnippetSummary { id: string; title: string; language: string; description?: string; }
 type DragItem = { type: "snippet"; id: string } | { type: "folder"; id: string };
 
 export function SnippetFolderOrganizer({ snippets }: { snippets: SnippetSummary[] }) {
@@ -56,7 +57,16 @@ export function SnippetFolderOrganizer({ snippets }: { snippets: SnippetSummary[
     return (
       <article
         key={id}
+        id={`snippet-${id}`}
         draggable
+        onClick={() =>
+          recordRecentSnippet({
+            id: snippet.id,
+            title: snippet.title,
+            language: snippet.language,
+            description: snippet.description,
+          })
+        }
         onDragStart={() => setDragged({ type: "snippet", id })}
         onDragEnd={() => { setDragged(null); setDropTarget(""); }}
         onDragOver={(event) => { event.preventDefault(); setDropTarget(`snippet:${destinationId ?? "unfiled"}:${index}`); }}

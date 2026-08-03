@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Layers, ChevronRight, Search, Globe, Lock, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { recordRecentSnippet } from "@/lib/recent-snippets-storage";
 
 interface Collection {
   id: string;
@@ -368,7 +369,17 @@ export default function CollectionsPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            <Link href={`/snippets#${snippet.id}`}>
+                            <Link
+                              href={`/snippets#${snippet.id}`}
+                              onClick={() =>
+                                recordRecentSnippet({
+                                  id: snippet.id,
+                                  title: snippet.title,
+                                  language: snippet.language,
+                                  description: snippet.description,
+                                })
+                              }
+                            >
                               <Button size="sm" variant="ghost" className="h-6 text-xs text-slate-400 hover:text-indigo-400 px-2">
                                 View
                               </Button>
