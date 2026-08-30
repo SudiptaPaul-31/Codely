@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+export const VISIBILITY_VALUES = ["private", "public", "shared"] as const;
+export type SnippetVisibility = (typeof VISIBILITY_VALUES)[number];
+
+export const visibilitySchema = z.enum(VISIBILITY_VALUES);
+
 export const createSnippetSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Description is required"),
@@ -10,6 +15,8 @@ export const createSnippetSchema = z.object({
   licenseType: z.string().optional(),
   forkedFromId: z.string().uuid("Invalid origin snippet UUID").nullable().optional(),
   isFork: z.boolean().optional(),
+  visibility: visibilitySchema.default("public"),
+  sharedWith: z.array(z.string()).optional(),
 });
 
 export const updateSnippetSchema = z.object({
@@ -21,6 +28,7 @@ export const updateSnippetSchema = z.object({
   licenseType: z.string().optional(),
   forkedFromId: z.string().uuid("Invalid origin snippet UUID").nullable().optional(),
   isFork: z.boolean().optional(),
+  visibility: visibilitySchema.optional(),
 });
 
 export const forkSnippetSchema = z.object({

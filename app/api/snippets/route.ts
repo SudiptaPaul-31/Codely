@@ -72,7 +72,19 @@ export async function GET(req: NextRequest) {
     const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
 
     // Handle backward compatibility: if no pagination params, return all (first page)
-    const result = await service.getAllSnippets({ limit, offset });
+    // Public listing: default to public-only unless the viewer's wallet is provided,
+    // in which case their own + shared-with-them snippets are included too.
+    const viewerWallet = req.headers.get("x-wallet-address");
+    const visibilityParam = searchParams.get("visibility");
+    const result = await service.getAllSnippets({
+      limit,
+      offset,
+      visibility:
+        visibilityParam === "private" || visibilityParam === "public" || visibilityParam === "shared"
+          ? visibilityParam
+          : undefined,
+      viewerWalletAddress: viewerWallet || undefined,
+    });
 
     return NextResponse.json(result);
   } catch (error) {
@@ -121,24 +133,16 @@ export async function POST(req: NextRequest) {
 
     const snippet = await service.createSnippet(body);
 
-    // Log transaction if wallet address provided
-    if (walletAddress) {
-      try {
-        await createTransaction(
-          walletAddress,
-          "snippet_create",
-          `Created snippet ${snippet.id}`,
-          { snippetId: snippet.id },
-        );
-      } catch (err) {
-        console.error("[transactions] Failed to log snippet_create:", err);
-      }
-    }
-    // Log snippet creation (fire-and-forget — never throws)
+    // Log creation with visibility for audit trail
     await appendActivityLog("snippet.created", "snippet", {
       actorWallet: walletAddress,
       resourceId: snippet.id,
-      metadata: { title: snippet.title, language: snippet.language, tags: snippet.tags },
+      metadata: {
+        title: snippet.title,
+        language: snippet.language,
+        tags: snippet.tags,
+        visibility: (snippet as any).visibility || "public",
+      },
       ipAddress: extractIp(req.headers),
       userAgent: extractUserAgent(req.headers),
     });

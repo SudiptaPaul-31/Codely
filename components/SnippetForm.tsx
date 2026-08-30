@@ -66,6 +66,8 @@ export default function SnippetForm({
       code: "",
       language: "javascript",
       tags: "",
+      visibility: "public",
+      sharedWith: "",
     },
   });
 
@@ -91,6 +93,8 @@ export default function SnippetForm({
       language: values.language,
       tags: values.tags,
       licenseType: values.licenseType,
+      visibility: values.visibility,
+      sharedWith: values.sharedWith,
     });
   };
 
@@ -102,6 +106,8 @@ export default function SnippetForm({
       language: initialValues?.language ?? "javascript",
       tags: initialValues?.tags ?? "",
       licenseType: initialValues?.licenseType ?? "None",
+      visibility: initialValues?.visibility ?? "public",
+      sharedWith: initialValues?.sharedWith ?? "",
     });
     // Reset autosave state when switching snippets
     serverUpdatedAtRef.current = null;
@@ -114,6 +120,8 @@ export default function SnippetForm({
       language: initialValues?.language ?? "javascript",
       tags: initialValues?.tags ?? "",
       licenseType: initialValues?.licenseType ?? "None",
+      visibility: initialValues?.visibility ?? "public",
+      sharedWith: initialValues?.sharedWith ?? "",
     });
     retryCountRef.current = 0;
     setAutosaveStatus("idle");
@@ -135,6 +143,14 @@ export default function SnippetForm({
           .filter(Boolean)
       : [],
     licenseType: values.licenseType === "None" ? undefined : values.licenseType,
+    visibility: values.visibility ?? "public",
+    sharedWith:
+      values.visibility === "shared" && values.sharedWith
+        ? values.sharedWith
+            .split(",")
+            .map((w) => w.trim())
+            .filter(Boolean)
+        : undefined,
   });
 
   const performAutosave = async () => {
@@ -443,6 +459,40 @@ export default function SnippetForm({
             )}
           />
         </div>
+
+        <div className="space-y-2">
+          <Label className="text-white">Visibility</Label>
+          <Controller
+            name="visibility"
+            control={control}
+            render={({ field }) => (
+              <Select value={field.value || "public"} onValueChange={field.onChange}>
+                <SelectTrigger className="bg-slate-700/50 border-purple-500/30 text-white">
+                  <SelectValue placeholder="Who can see this snippet?" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="public">🌍 Public — anyone can view</SelectItem>
+                  <SelectItem value="private">🔒 Private — only you</SelectItem>
+                  <SelectItem value="shared">👥 Shared — specific wallets</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </div>
+
+        {watchedValues.visibility === "shared" && (
+          <div className="space-y-2">
+            <Label htmlFor="sharedWith" className="text-white">
+              Share with (wallet addresses, comma-separated)
+            </Label>
+            <Input
+              id="sharedWith"
+              placeholder="GABC...,GXYZ..."
+              {...register("sharedWith")}
+              className="bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400"
+            />
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="code" className="text-white">

@@ -15,7 +15,7 @@ export class SnippetService {
   constructor(private snippetRepository: SnippetRepository) {}
 
   async getAllSnippets(
-    options?: PaginationOptions,
+    options?: PaginationOptions & { visibility?: string; viewerWalletAddress?: string },
   ): Promise<PaginatedResult<any>> {
     try {
       return await this.snippetRepository.findAll(options);
@@ -34,6 +34,93 @@ export class SnippetService {
       console.error("[Service] Error searching snippets:", error);
       throw new Error("Failed to search snippets");
     }
+  }
+
+  /**
+   * Change snippet visibility (private/public/shared). Owner only.
+   * Logs every change for traceability.
+   */
+  async setVisibility(
+    snippetId: string,
+    visibility: "private" | "public" | "shared",
+    actorWalletAddress: string | null,
+    sharedWith?: string[],
+  ) {
+    const existing = await this.snippetRepository.findById(snippetId);
+    if (!existing) {
+      throw new Error("Snippet not found");
+    }
+
+    // Only the owner may change visibility
+    if (
+      existing.owner_wallet_address &&
+      actorWalletAddress &&
+      existing.owner_wallet_address !== actorWalletAddress
+    ) {
+      throw new Error("Only the snippet owner can change visibility");
+    }
+
+    const updated = await this.snippetRepository.update(snippetId, {
+      visibility,
+    } as any);
+    if (!updated) {
+      throw new Error("Failed to update visibility");
+    }
+
+    // Replace per-user grants when moving to 'shared'
+    if (visibility === "shared" && sharedWith) {
+      const current = await this.snippetRepository.findSharedUsers(snippetId);
+      const currentSet = new Set(
+        current.map((u: any) => u.user_wallet_address),
+      );
+      const nextSet = new Set(sharedWith);
+      for (const wallet of sharedWith) {
+        if (!currentSet.has(wallet)) {
+          await this.snippetRepository.addSharedUser(
+            snippetId,
+            wallet,
+            actorWalletAddress || "system",
+          );
+          await appendActivityLog("snippet.shared_user_added", "snippet", {
+            actorWallet: actorWalletAddress,
+            resourceId: snippetId,
+            metadata: { user: wallet },
+          });
+        }
+      }
+      for (const u of current) {
+        if (!nextSet.has(u.user_wallet_address)) {
+          await this.snippetRepository.removeSharedUser(
+            snippetId,
+            u.user_wallet_address,
+          );
+          await appendActivityLog("snippet.shared_user_removed", "snippet", {
+            actorWallet: actorWalletAddress,
+            resourceId: snippetId,
+            metadata: { user: u.user_wallet_address },
+          });
+        }
+      }
+    }
+
+    await appendActivityLog("snippet.visibility_changed", "snippet", {
+      actorWallet: actorWalletAddress,
+      resourceId: snippetId,
+      metadata: {
+        from: existing.visibility || "public",
+        to: visibility,
+        sharedWith: visibility === "shared" ? (sharedWith || null) : undefined,
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * List users a snippet is shared with (owner only sees the list).
+   */
+  async getSharedUsers(snippetId: string) {
+    return this.snippetRepository.findSharedUsers(snippetId);
   }
 
   async getSnippetById(id: string) {
@@ -73,6 +160,17 @@ export class SnippetService {
         ...validatedData,
         ipfsCid
       });
+
+      // If the snippet is created as 'shared', register per-user grants
+      if (validatedData.visibility === "shared" && validatedData.sharedWith?.length) {
+        for (const wallet of validatedData.sharedWith) {
+          await this.snippetRepository.addSharedUser(
+            snippet.id,
+            wallet,
+            validatedData.ownerWalletAddress,
+          );
+        }
+      }
 
       // If licenseType is provided, mint it via recovery service
       if (validatedData.licenseType && validatedData.licenseType !== "None") {

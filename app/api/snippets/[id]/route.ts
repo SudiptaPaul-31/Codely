@@ -10,6 +10,8 @@ import { SnippetService } from "../snippet.service";
 import { SnippetRepository } from "../snippet.repository";
 import { OwnershipMiddleware } from "../ownership.middleware";
 import { canView, canEdit } from "@/lib/permissions.service";
+import { ShareService } from "../share.service";
+import { ShareRepository } from "../share.repository";
 import { ZodError } from "zod";
 import { appendActivityLog, extractIp, extractUserAgent } from "@/lib/activity-logger";
 import { SignatureMiddleware } from "../signature.middleware";
@@ -19,6 +21,7 @@ const repository = new SnippetRepository();
 const service = new SnippetService(repository);
 const ownershipMiddleware = new OwnershipMiddleware();
 const signatureMiddleware = new SignatureMiddleware();
+const shareService = new ShareService(new ShareRepository(), repository);
 
 export async function GET(
   req: NextRequest,
@@ -60,26 +63,65 @@ export async function GET(
     // Default: get snippet by ID via service
     const snippet = await service.getSnippetById(id);
 
-    // Enforce view permission if snippet has an owner
+    // ---- Visibility-based authorization ----
+    const visibility = (snippet as any).visibility || "public";
     const ownerWallet = (snippet as any).owner_wallet_address;
-    if (ownerWallet) {
-      const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
-      if (!walletAddress) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const viewerWallet = await OwnershipMiddleware.extractWalletAddress(req);
+    const isOwner = !!viewerWallet && (!ownerWallet || viewerWallet === ownerWallet);
+
+    if (!isOwner) {
+      if (visibility === "private") {
+        // Private snippets are accessible only to the owner
+        return NextResponse.json(
+          {
+            error: "Forbidden",
+            message: "This snippet is private.",
+          },
+          { status: 403 },
+        );
       }
 
-      // Owner always has access — skip permission check
-      if (walletAddress !== ownerWallet) {
-        const allowed = await canView(id, walletAddress);
-        if (!allowed) {
+      if (visibility === "shared") {
+        // Shared snippets: only explicitly granted users (or a valid share link)
+        const shareToken = url.searchParams.get("shareToken");
+        let authorized = false;
+
+        if (viewerWallet) {
+          const sharedUsers = await service.getSharedUsers(id);
+          authorized = sharedUsers.some(
+            (u: any) => u.user_wallet_address === viewerWallet,
+          );
+        }
+
+        if (!authorized && shareToken) {
+          const shared = await shareService.getSharedSnippet(shareToken);
+          authorized = !!shared && shared.snippet.id === id;
+        }
+
+        if (!authorized) {
           return NextResponse.json(
             {
               error: "Forbidden",
-              message: "You do not have view access to this snippet.",
+              message: "You do not have access to this shared snippet.",
             },
             { status: 403 },
           );
         }
+      }
+      // visibility === "public": accessible to anyone without authentication
+    }
+
+    // Enforce view permission if snippet has an owner (explicit grants)
+    if (ownerWallet && !isOwner) {
+      const allowed = await canView(id, viewerWallet!);
+      if (!allowed) {
+        return NextResponse.json(
+          {
+            error: "Forbidden",
+            message: "You do not have view access to this snippet.",
+          },
+          { status: 403 },
+        );
       }
     }
 
