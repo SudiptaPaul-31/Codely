@@ -21,6 +21,8 @@ import { SnippetFormValues } from "@/types/type";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { snippetSchema } from "@/validiation/snippet-form-validiation";
 import { toast } from "sonner";
+import { useSnippetFormatting } from "@/hooks/useSnippetFormatting";
+import SnippetEditorToolbar from "@/components/SnippetEditorToolbar";
 
 interface SnippetFormProps {
   editingId: string | null;
@@ -44,6 +46,9 @@ export default function SnippetForm({
     handleSubmit,
     control,
     reset,
+    getValues,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<SnippetFormValues>({
     resolver: zodResolver(snippetSchema),
@@ -56,6 +61,25 @@ export default function SnippetForm({
     },
   });
 
+  const {
+    suggestion,
+    autoFormat,
+    formatting,
+    formatStatus,
+    handlePaste,
+    acceptSuggestion,
+    dismissSuggestion,
+    handleLanguageSelect,
+    lockDetection,
+    setAutoFormat,
+    formatNow,
+  } = useSnippetFormatting({
+    getCode: () => getValues("code"),
+    getLanguage: () => getValues("language"),
+    applyLanguage: (language) => setValue("language", language),
+    applyCode: (code) => setValue("code", code),
+  });
+
   useEffect(() => {
     reset({
       title: initialValues?.title ?? "",
@@ -66,6 +90,19 @@ export default function SnippetForm({
       licenseType: initialValues?.licenseType ?? "None",
     });
   }, [initialValues, reset]);
+
+  // An existing snippet already has an explicit language choice: detection
+  // must never overwrite it.
+  useEffect(() => {
+    if (editingId && initialValues?.language) {
+      lockDetection();
+    }
+  }, [editingId, initialValues?.language, lockDetection]);
+
+  const handleCodePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedText = event.clipboardData?.getData("text");
+    if (pastedText) handlePaste(pastedText);
+  };
 
   const onSubmit = async (data: SnippetFormValues) => {
     try {
@@ -156,8 +193,21 @@ export default function SnippetForm({
             name="language"
             control={control}
             render={({ field }) => (
-              <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger className="bg-slate-700/50 border-purple-500/30 text-white">
+              <Select
+                value={field.value}
+                onValueChange={(value) => {
+                  // Radix mirrors the value into a hidden native <select>
+                  // that can emit a spurious empty change event on mount;
+                  // an empty language is never valid, so ignore it.
+                  if (!value) return;
+                  field.onChange(value);
+                  handleLanguageSelect(value);
+                }}
+              >
+                <SelectTrigger
+                  aria-label="Language"
+                  className="bg-slate-700/50 border-purple-500/30 text-white"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -178,7 +228,13 @@ export default function SnippetForm({
             name="licenseType"
             control={control}
             render={({ field }) => (
-              <Select value={field.value || "None"} onValueChange={field.onChange}>
+              <Select
+                value={field.value || "None"}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  field.onChange(value);
+                }}
+              >
                 <SelectTrigger className="bg-slate-700/50 border-purple-500/30 text-white">
                   <SelectValue placeholder="Select a license" />
                 </SelectTrigger>
@@ -194,6 +250,18 @@ export default function SnippetForm({
           />
         </div>
 
+        <SnippetEditorToolbar
+          language={watch("language")}
+          suggestion={suggestion}
+          onAcceptSuggestion={acceptSuggestion}
+          onDismissSuggestion={dismissSuggestion}
+          autoFormat={autoFormat}
+          onAutoFormatChange={setAutoFormat}
+          onFormat={() => void formatNow()}
+          formatting={formatting}
+          formatStatus={formatStatus}
+        />
+
         <div className="space-y-2">
           <Label htmlFor="code" className="text-white">
             Code
@@ -202,6 +270,7 @@ export default function SnippetForm({
             id="code"
             placeholder="Paste your code here..."
             {...register("code")}
+            onPaste={handleCodePaste}
             className="bg-slate-700/50 border-purple-500/30 text-white placeholder-gray-400 font-mono min-h-64"
           />
           {errors.code && (
