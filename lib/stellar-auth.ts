@@ -1,3 +1,5 @@
+import { validateStellarAddress } from "./stellar-wallet-validation";
+
 /**
  * Verify wallet signature using Stellar SDK
  */
@@ -7,6 +9,11 @@ export async function verifyWalletSignature(
   publicKey: string,
 ): Promise<{ valid: boolean; error?: string }> {
   try {
+    // Validate the Stellar wallet address first
+    if (!validateStellarAddress(publicKey)) {
+      return { valid: false, error: "Invalid Stellar wallet address" };
+    }
+
     // Import Stellar SDK
     const StellarSdk = require("stellar-sdk");
 

@@ -11,6 +11,7 @@ import {
   buildSnippetMemo,
   generateSnippetMemoRef,
 } from "@/lib/snippet-memo";
+import { validateStellarAddress } from "@/lib/stellar-wallet-validation";
 
 const STELLAR_NETWORK = process.env.NEXT_PUBLIC_STELLAR_NETWORK || "testnet";
 const STELLAR_SECRET_KEY = process.env.STELLAR_SECRET_KEY || "";
@@ -61,6 +62,16 @@ export async function submitTransactionWithConfirmation({
   memo?: StellarSdk.Memo;
   metadata?: Record<string, unknown>;
 }): Promise<StellarSubmitResult> {
+  // Validate the wallet address
+  try {
+    validateStellarAddress(walletAddress);
+  } catch (error: any) {
+    return {
+      success: false,
+      error: `Invalid Stellar wallet address: ${error.message}`,
+    };
+  }
+
   const key = secretKey || STELLAR_SECRET_KEY;
 
   if (!key) {
@@ -160,6 +171,16 @@ export async function submitOwnershipTransferMemoToStellar({
   oldOwnerWalletAddress: string;
   newOwnerWalletAddress: string;
 }): Promise<StellarSubmitResult> {
+  try {
+    validateStellarAddress(oldOwnerWalletAddress);
+    validateStellarAddress(newOwnerWalletAddress);
+  } catch (error: any) {
+    return {
+      success: false,
+      error: `Invalid Stellar wallet address: ${error.message}`,
+    };
+  }
+
   const key = secretKey || STELLAR_SECRET_KEY;
 
   // Fall back to deterministic mock when no key configured.
