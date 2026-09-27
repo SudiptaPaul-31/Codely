@@ -1,6 +1,14 @@
 import * as StellarSdk from "stellar-sdk";
 import { StellarRecoveryRepository } from "./stellar-recovery.repository";
 import { SnippetTransactionRepository } from "./snippet-transaction.repository";
+import {
+  SnippetVerificationHistoryRepository,
+} from "./snippet-verification-history.repository";
+import type {
+  SnippetVerificationHistoryQueryOptions,
+  SnippetVerificationHistoryRepositoryLike,
+  SnippetVerificationStatus,
+} from "./snippet-verification-history.types";
 import type { SnippetTransactionRepositoryLike } from "./snippet-transaction.repository";
 import type { SnippetTransaction } from "./snippet-transaction.types";
 import type {
@@ -44,6 +52,7 @@ export class StellarRecoveryService {
   constructor(
     private readonly repo: StellarRecoveryRepository = new StellarRecoveryRepository(),
     private readonly snippetTransactions: SnippetTransactionRepositoryLike = new SnippetTransactionRepository(),
+    private readonly verificationHistory: SnippetVerificationHistoryRepositoryLike = new SnippetVerificationHistoryRepository(),
   ) {}
 
   async submitOwnershipTransfer(params: {
@@ -194,12 +203,22 @@ export class StellarRecoveryService {
           const nextRetry = computeBackoff(record.attempt_count + 1);
           await this.repo.markFailed({ id: record.id, error, nextRetryAt: nextRetry });
           await this.failMemoAssociation(record, error);
+          await this.recordVerificationEvents({
+            record,
+            status: "failed",
+            errorMessage: error,
+          });
           console.warn(
             `[StellarRecovery] Submission failed (retryable): ${record.tx_type} — ${error}`,
           );
         } else {
           await this.repo.markDead({ id: record.id, error });
           await this.failMemoAssociation(record, error);
+          await this.recordVerificationEvents({
+            record,
+            status: "failed",
+            errorMessage: error,
+          });
           console.error(
             `[StellarRecovery] Submission failed (permanent): ${record.tx_type} — ${error}`,
           );
@@ -210,6 +229,12 @@ export class StellarRecoveryService {
       await this.repo.markSubmitted({
         id: record.id,
         stellarTxHash: result.transactionHash,
+      });
+
+      await this.recordVerificationEvents({
+        record,
+        transactionHash: result.transactionHash,
+        status: "pending",
       });
 
       const memoRef = typeof result.memoRef === "string" ? result.memoRef : null;
@@ -239,6 +264,14 @@ export class StellarRecoveryService {
           stellarLedger: confirmed,
         });
         await this.confirmMemoAssociation(result.transactionHash, confirmed);
+
+        await this.recordVerificationEvents({
+          record,
+          transactionHash: result.transactionHash,
+          status: "confirmed",
+          ledgerSequence: confirmed,
+          verifiedAt: new Date(),
+        });
 
         await appendActivityLog("stellar.tx.confirmed", "snippet", {
           resourceId: payload.snippetId as string | null,
@@ -546,6 +579,22 @@ export class StellarRecoveryService {
   }
 
   /**
+   * Chronological verification history for a snippet (oldest first), with
+   * the total event count for pagination.
+   */
+  async getVerificationHistory(
+    snippetId: string,
+    options?: SnippetVerificationHistoryQueryOptions,
+  ) {
+    return this.verificationHistory.findBySnippetId(snippetId, options);
+  }
+
+  /** Whether a snippet with the given id exists. */
+  async snippetExists(snippetId: string): Promise<boolean> {
+    return this.verificationHistory.snippetExists(snippetId);
+  }
+
+  /**
    * Persist the memo → snippet association right after submission.
    *
    * Best-effort: association failures are logged and never abort the
@@ -659,6 +708,57 @@ export class StellarRecoveryService {
         `[StellarRecovery] Failed to mark snippet association failed for ${record.stellar_tx_hash}:`,
         associationError instanceof Error ? associationError.message : associationError,
       );
+    }
+  }
+
+  /**
+   * Append a blockchain verification event to the snippet verification
+   * history.
+   *
+   * Best-effort: history failures are logged and never abort the
+   * transaction flow. Nothing is written when no transaction hash or
+   * snippet id is available, so no orphaned events can be created. The
+   * repository's UNIQUE(transaction_hash) upsert keeps reprocessing
+   * idempotent — retried transactions converge the existing row.
+   */
+  private async recordVerificationEvents(params: {
+    record: PendingStellarTransaction;
+    transactionHash?: string | null;
+    status: SnippetVerificationStatus;
+    ledgerSequence?: number | null;
+    errorMessage?: string | null;
+    verifiedAt?: Date | null;
+  }): Promise<void> {
+    const transactionHash = params.transactionHash ?? params.record.stellar_tx_hash;
+    if (!transactionHash) {
+      return;
+    }
+
+    const snippetIds = collectSnippetIds(params.record.payload);
+    if (snippetIds.length === 0) {
+      console.warn(
+        `[StellarRecovery] No snippet id found in ${params.record.tx_type} payload; skipping verification history for ${transactionHash}`,
+      );
+      return;
+    }
+
+    for (const snippetId of snippetIds) {
+      try {
+        await this.verificationHistory.recordEvent({
+          snippetId,
+          transactionHash,
+          status: params.status,
+          txType: params.record.tx_type,
+          ledgerSequence: params.ledgerSequence ?? null,
+          errorMessage: params.errorMessage ?? null,
+          verifiedAt: params.verifiedAt ?? null,
+        });
+      } catch (error) {
+        console.warn(
+          `[StellarRecovery] Failed to record verification history for snippet ${snippetId} (${transactionHash}):`,
+          error instanceof Error ? error.message : error,
+        );
+      }
     }
   }
 }
