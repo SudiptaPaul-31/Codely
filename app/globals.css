@@ -316,6 +316,37 @@
     box-shadow: var(--shadow-lg);
   }
 
+  /* ───────── Dashboard View Layouts ───────── */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .dashboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .dashboard-item {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .dashboard-item:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* View Transition Utilities */
+  .view-transition-enter {
+    animation: fade-in-up 0.3s ease-out;
+  }
+
+  .view-transition-exit {
+    animation: fade-in 0.2s ease-out;
+  }
+
   /* ───────── Hero pill badge ───────── */
   .badge-pill {
     display: inline-flex;
