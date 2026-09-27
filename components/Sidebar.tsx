@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	Code2,
 	Home,
@@ -29,6 +29,21 @@ export function Sidebar() {
 	const pathname = usePathname();
 	const [collapsed, setCollapsed] = useState(false);
 	const [mobileOpen, setMobileOpen] = useState(false);
+	const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+	useEffect(() => {
+		if (!mobileOpen) return;
+
+		const handleKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") {
+				setMobileOpen(false);
+				menuButtonRef.current?.focus();
+			}
+		};
+
+		document.addEventListener("keydown", handleKeyDown);
+		return () => document.removeEventListener("keydown", handleKeyDown);
+	}, [mobileOpen]);
 
 	return (
 		<>
@@ -43,14 +58,19 @@ export function Sidebar() {
 
 			{/* Mobile hamburger trigger */}
 			<button
+				ref={menuButtonRef}
 				className="fixed top-4 left-4 z-50 md:hidden p-2 rounded-lg bg-gray-900 border border-white/10 text-gray-300 hover:text-purple-400 transition-colors"
 				onClick={() => setMobileOpen(!mobileOpen)}
-				aria-label="Toggle sidebar">
+				aria-label="Toggle sidebar"
+				aria-expanded={mobileOpen}
+				aria-controls="primary-sidebar">
 				{mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
 			</button>
 
 			{/* Sidebar panel */}
 			<aside
+				id="primary-sidebar"
+				aria-label="Primary navigation"
 				className={cn(
 					// Base styles
 					"flex flex-col bg-gray-950 border-r border-white/10 h-screen sticky top-0 z-40",

@@ -23,6 +23,8 @@ export async function syncReputationEvents() {
     const fetchEvents = async () => {
       try {
         const eventsResponse = await server.getEvents({
+          
+          
           startLedger: 0, // In production, this would be the last synced ledger
           filters: [
             {

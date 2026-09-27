@@ -4,7 +4,9 @@ loadEnvConfig(process.cwd());
 import { restoreBackup, listBackups } from '../lib/backup.service';
 
 async function main() {
+  
   const args = process.argv.slice(2);
+  
   
   if (args[0] === 'list') {
     const backups = listBackups();

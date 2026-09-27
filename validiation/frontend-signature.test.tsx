@@ -1,3 +1,7 @@
+/**
+ * @jest-environment jsdom
+ */
+
 import { renderHook, act } from '@testing-library/react';
 import { WalletProvider, useWallet } from '../components/WalletConnect';
 import React from 'react';

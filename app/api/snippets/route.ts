@@ -3,6 +3,7 @@ import { rateLimit } from "@/lib/rateLimiter";
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { createTransaction } from "@/lib/db";
+import { validationErrorBody, validationFailureBody } from "./snippet.validator";
 import { OwnershipMiddleware } from "./ownership.middleware";
 import { SnippetRepository } from "./snippet.repository";
 import { SnippetService } from "./snippet.service";
@@ -111,7 +112,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        validationFailureBody("Request body is not valid JSON"),
+        { status: 400 },
+      );
+    }
 
     // Extract and inject the wallet address securely from headers
     const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
@@ -146,10 +155,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(snippet, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) {
-      return NextResponse.json(
-        { error: "Validation failed", details: error.errors },
-        { status: 400 },
-      );
+      return NextResponse.json(validationErrorBody(error), { status: 400 });
     }
     return NextResponse.json(
       {

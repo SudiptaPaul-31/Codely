@@ -11,6 +11,7 @@ import { SnippetRepository } from "../snippet.repository";
 import { OwnershipMiddleware } from "../ownership.middleware";
 import { canView, canEdit } from "@/lib/permissions.service";
 import { ZodError } from "zod";
+import { validationErrorBody } from "../snippet.validator";
 import { appendActivityLog, extractIp, extractUserAgent } from "@/lib/activity-logger";
 import { SignatureMiddleware } from "../signature.middleware";
 
@@ -59,6 +60,13 @@ export async function GET(
 
     // Default: get snippet by ID via service
     const snippet = await service.getSnippetById(id);
+
+    // Public snippets are readable by everyone; private/shared snippets keep
+    // the existing owner/permission-based access rules.
+    const visibility = (snippet as any).visibility ?? "private";
+    if (visibility === "public") {
+      return NextResponse.json(snippet);
+    }
 
     // Enforce view permission if snippet has an owner
     const ownerWallet = (snippet as any).owner_wallet_address;
@@ -167,6 +175,29 @@ export async function PUT(
       );
     }
 
+    // Conflict detection: if the client sends If-Unmodified-Since, verify the
+    // snippet hasn't been modified since that timestamp. This prevents autosave
+    // from overwriting changes made in another session/editor.
+    const ifUnmodifiedSince = req.headers.get("If-Unmodified-Since");
+    if (ifUnmodifiedSince) {
+      const current = await service.getSnippetById(id);
+      const currentUpdatedAt = current?.updated_at
+        ? new Date(current.updated_at).getTime()
+        : 0;
+      const clientTimestamp = new Date(ifUnmodifiedSince).getTime();
+
+      if (currentUpdatedAt > clientTimestamp) {
+        return NextResponse.json(
+          {
+            error: "Conflict",
+            message:
+              "This snippet was modified in another session. Refresh to see the latest version.",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const body = await req.json();
     const snippet = await service.updateSnippet(id, body);
 
@@ -195,10 +226,7 @@ export async function PUT(
     return NextResponse.json(snippet);
   } catch (error) {
     if (error instanceof ZodError) {
-      return NextResponse.json(
-        { error: "Validation failed", details: error.errors },
-        { status: 400 },
-      );
+      return NextResponse.json(validationErrorBody(error), { status: 400 });
     }
     if (error instanceof Error && error.message === "Snippet not found") {
       return NextResponse.json({ error: "Snippet not found" }, { status: 404 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Code2, Menu, X } from "lucide-react";
@@ -17,6 +17,21 @@ const NAV_LINKS = [
 export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mobileOpen]);
 
   return (
     <header className="border-b border-white/10 backdrop-blur-md sticky top-0 z-50">
@@ -34,7 +49,7 @@ export function Navbar() {
 
         {/* Desktop nav links & Wallet */}
         <div className="hidden md:flex items-center gap-4">
-          <nav className="flex items-center gap-1">
+          <nav aria-label="Primary navigation" className="flex items-center gap-1">
             {NAV_LINKS.map(({ label, href }) => (
               <Link key={href} href={href}>
                 <Button
@@ -56,9 +71,12 @@ export function Navbar() {
 
         {/* Mobile menu button */}
         <button
+          ref={menuButtonRef}
           className="md:hidden text-gray-300 hover:text-purple-400 transition-colors"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label="Toggle navigation menu"
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-navigation"
         >
           {mobileOpen ? (
             <X className="w-6 h-6" />
@@ -70,7 +88,7 @@ export function Navbar() {
 
       {/* Mobile menu */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-white/10 bg-black/80 backdrop-blur-md px-4 py-4 flex flex-col gap-2">
+        <nav id="mobile-navigation" aria-label="Mobile navigation" className="md:hidden border-t border-white/10 bg-black/80 backdrop-blur-md px-4 py-4 flex flex-col gap-2">
           {NAV_LINKS.map(({ label, href }) => (
             <Link key={href} href={href} onClick={() => setMobileOpen(false)}>
               <Button
@@ -89,7 +107,7 @@ export function Navbar() {
           <div className="mt-2">
             <WalletButton />
           </div>
-        </div>
+        </nav>
       )}
     </header>
   );

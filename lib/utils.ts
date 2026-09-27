@@ -66,7 +66,8 @@ function sanitizeFilename(title: string): string {
   // Remove invalid characters
   let sanitized = baseName
     .replace(/[<>:"/\\|?*]/g, '_') // Windows invalid chars
-    .replace(/[\x00-\x1F\x7F]/g, '') // Control chars
+    // eslint-disable-next-line no-control-regex -- control chars are intentionally stripped from filenames
+    .replace(/[\x00-\x1F\x7F]/g, '')
     .replace(/\s+/g, '_') // Replace spaces with underscores
     .toLowerCase();
   

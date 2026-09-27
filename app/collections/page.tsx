@@ -8,10 +8,13 @@ import { useWallet } from "@/components/WalletConnect";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Layers, ChevronRight, Search, Globe, Lock, ExternalLink } from "lucide-react";
+import { Layers, ChevronRight, Search, Globe, Lock, ExternalLink, Files, GitFork, Eye } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { recordRecentSnippet } from "@/lib/recent-snippets-storage";
+import { DerivationBadge } from "@/components/DerivationBadge";
+import { SnippetDetailModal } from "@/components/SnippetDetailModal";
+import { ForkSnippetModal, SnippetToFork } from "@/components/ForkSnippetModal";
 
 interface Collection {
   id: string;
@@ -32,6 +35,8 @@ interface Snippet {
   language: string;
   description: string;
   tags: string[];
+  forked_from_id?: string | null;
+  is_fork?: boolean;
   license_type?: string;
   license_transaction_hash?: string;
 }
@@ -49,6 +54,10 @@ export default function CollectionsPage() {
   const [loadingSnippets, setLoadingSnippets] = useState(false);
   const [tab, setTab] = useState<"mine" | "public">("mine");
   const [search, setSearch] = useState("");
+
+  // Modals
+  const [detailSnippetId, setDetailSnippetId] = useState<string | null>(null);
+  const [forkingSnippet, setForkingSnippet] = useState<SnippetToFork | null>(null);
 
   const fetchMine = useCallback(async () => {
     if (!walletAddress) return;
@@ -103,6 +112,32 @@ export default function CollectionsPage() {
     }
   };
 
+  const handleDuplicateSnippet = async (snippet: Snippet) => {
+    if (!walletAddress) {
+      toast.error("Please connect your wallet to duplicate snippets.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/snippets/${snippet.id}/duplicate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet-address": walletAddress,
+        },
+        body: JSON.stringify({ ownerWalletAddress: walletAddress }),
+      });
+
+      if (!res.ok) throw new Error();
+      toast.success(`Duplicated "${snippet.title}" to your collection!`);
+      if (selectedCollection) {
+        openCollection(selectedCollection);
+      }
+    } catch {
+      toast.error("Could not duplicate snippet.");
+    }
+  };
+
   const handleRemoveSnippet = async (snippetId: string) => {
     if (!walletAddress || !selectedCollection) return;
     try {
@@ -134,7 +169,7 @@ export default function CollectionsPage() {
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
       <Sidebar />
 
-      <main className="flex-1 p-6 lg:p-8 overflow-auto">
+      <main id="main-content" className="flex-1 p-6 lg:p-8 overflow-auto">
         <div className="max-w-6xl mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
@@ -352,6 +387,12 @@ export default function CollectionsPage() {
                             </div>
                             <div className="flex items-center gap-2 text-xs text-slate-500">
                               <span>{snippet.language}</span>
+                              {snippet.forked_from_id && (
+                                <>
+                                  <span>&middot;</span>
+                                  <DerivationBadge forkedFromId={snippet.forked_from_id} size="sm" />
+                                </>
+                              )}
                               {snippet.license_transaction_hash && (
                                 <>
                                   <span>&middot;</span>
@@ -369,21 +410,32 @@ export default function CollectionsPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            <Link
-                              href={`/snippets#${snippet.id}`}
-                              onClick={() =>
-                                recordRecentSnippet({
-                                  id: snippet.id,
-                                  title: snippet.title,
-                                  language: snippet.language,
-                                  description: snippet.description,
-                                })
-                              }
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 text-xs text-slate-400 hover:text-indigo-400 px-2"
+                              onClick={() => setDetailSnippetId(snippet.id)}
                             >
-                              <Button size="sm" variant="ghost" className="h-6 text-xs text-slate-400 hover:text-indigo-400 px-2">
-                                View
-                              </Button>
-                            </Link>
+                              <Eye className="w-3.5 h-3.5 mr-1" /> View
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 text-xs text-purple-300 hover:text-purple-200 px-2"
+                              onClick={() => handleDuplicateSnippet(snippet)}
+                              title="Duplicate snippet"
+                            >
+                              <Files className="w-3.5 h-3.5 mr-1" /> Duplicate
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 text-xs text-cyan-300 hover:text-cyan-200 px-2"
+                              onClick={() => setForkingSnippet(snippet)}
+                              title="Fork snippet"
+                            >
+                              <GitFork className="w-3.5 h-3.5 mr-1" /> Fork
+                            </Button>
                             {walletAddress === selectedCollection.owner_wallet_address && (
                               <Button
                                 size="sm"
@@ -404,7 +456,32 @@ export default function CollectionsPage() {
             </div>
           </div>
         </div>
+
+        {/* Snippet Detail Modal */}
+        <SnippetDetailModal
+          snippetId={detailSnippetId}
+          isOpen={Boolean(detailSnippetId)}
+          onClose={() => setDetailSnippetId(null)}
+          onDuplicate={() => {
+            if (selectedCollection) openCollection(selectedCollection);
+          }}
+          onFork={(snip) => {
+            setDetailSnippetId(null);
+            setForkingSnippet(snip);
+          }}
+        />
+
+        {/* Fork Snippet Modal */}
+        <ForkSnippetModal
+          snippet={forkingSnippet}
+          isOpen={Boolean(forkingSnippet)}
+          onClose={() => setForkingSnippet(null)}
+          onSuccess={() => {
+            if (selectedCollection) openCollection(selectedCollection);
+          }}
+        />
       </main>
     </div>
   );
 }
+

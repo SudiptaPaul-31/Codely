@@ -1,5 +1,8 @@
 import * as StellarSdk from "stellar-sdk";
 import { StellarRecoveryRepository } from "./stellar-recovery.repository";
+import { SnippetTransactionRepository } from "./snippet-transaction.repository";
+import type { SnippetTransactionRepositoryLike } from "./snippet-transaction.repository";
+import type { SnippetTransaction } from "./snippet-transaction.types";
 import type {
   CallbackStatus,
   PendingStellarTransaction,
@@ -40,6 +43,7 @@ function sleep(ms: number): Promise<void> {
 export class StellarRecoveryService {
   constructor(
     private readonly repo: StellarRecoveryRepository = new StellarRecoveryRepository(),
+    private readonly snippetTransactions: SnippetTransactionRepositoryLike = new SnippetTransactionRepository(),
   ) {}
 
   async submitOwnershipTransfer(params: {
@@ -189,11 +193,13 @@ export class StellarRecoveryService {
         if (classification.retryable) {
           const nextRetry = computeBackoff(record.attempt_count + 1);
           await this.repo.markFailed({ id: record.id, error, nextRetryAt: nextRetry });
+          await this.failMemoAssociation(record, error);
           console.warn(
             `[StellarRecovery] Submission failed (retryable): ${record.tx_type} — ${error}`,
           );
         } else {
           await this.repo.markDead({ id: record.id, error });
+          await this.failMemoAssociation(record, error);
           console.error(
             `[StellarRecovery] Submission failed (permanent): ${record.tx_type} — ${error}`,
           );
@@ -205,6 +211,15 @@ export class StellarRecoveryService {
         id: record.id,
         stellarTxHash: result.transactionHash,
       });
+
+      const memoRef = typeof result.memoRef === "string" ? result.memoRef : null;
+      if (memoRef) {
+        await this.recordMemoAssociation(record, result.transactionHash, memoRef);
+      } else {
+        console.warn(
+          `[StellarRecovery] No snippet memo reference returned for ${record.tx_type}; skipping snippet association`,
+        );
+      }
 
       await appendActivityLog("stellar.tx.submitted", "snippet", {
         resourceId: payload.snippetId as string | null,
@@ -223,6 +238,7 @@ export class StellarRecoveryService {
           id: record.id,
           stellarLedger: confirmed,
         });
+        await this.confirmMemoAssociation(result.transactionHash, confirmed);
 
         await appendActivityLog("stellar.tx.confirmed", "snippet", {
           resourceId: payload.snippetId as string | null,
@@ -519,4 +535,159 @@ export class StellarRecoveryService {
   ): Promise<PendingStellarTransaction[]> {
     return this.repo.findBySnippetId(snippetId);
   }
+
+  /**
+   * Transaction ↔ snippet associations recorded from Stellar memos.
+   * Powers snippet traceability: the history of anchored, licensed or
+   * transferred transactions for a snippet.
+   */
+  async getSnippetTransactions(snippetId: string): Promise<SnippetTransaction[]> {
+    return this.snippetTransactions.findBySnippetId(snippetId);
+  }
+
+  /**
+   * Persist the memo → snippet association right after submission.
+   *
+   * Best-effort: association failures are logged and never abort the
+   * transaction flow, and nothing is written when the memo reference is
+   * missing, so no orphaned association can be created.
+   */
+  private async recordMemoAssociation(
+    record: PendingStellarTransaction,
+    stellarTxHash: string,
+    memoRef: string,
+  ): Promise<void> {
+    const snippetIds = collectSnippetIds(record.payload);
+
+    if (snippetIds.length === 0) {
+      console.warn(
+        `[StellarRecovery] No snippet id found in ${record.tx_type} payload; skipping memo association for ${stellarTxHash}`,
+      );
+      return;
+    }
+
+    for (const snippetId of snippetIds) {
+      try {
+        await this.snippetTransactions.linkPending({
+          snippetId,
+          transactionHash: stellarTxHash,
+          memoRef,
+          txType: record.tx_type,
+        });
+
+        await appendActivityLog("snippet.transaction.linked", "snippet", {
+          resourceId: snippetId,
+          metadata: {
+            memoRef,
+            stellarTxHash,
+            txType: record.tx_type,
+            status: "pending",
+          },
+        });
+      } catch (error) {
+        console.warn(
+          `[StellarRecovery] Failed to associate ${stellarTxHash} with snippet ${snippetId}:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+
+    // Audit the memo attachment (reference only — never the secret payload).
+    await appendActivityLog("stellar.memo.attached", "snippet", {
+      resourceId: snippetIds[0],
+      metadata: {
+        memoRef,
+        stellarTxHash,
+        txType: record.tx_type,
+        snippetIds,
+      },
+    });
+  }
+
+  /** Flip pending associations to confirmed once the ledger holds the tx. */
+  private async confirmMemoAssociation(
+    stellarTxHash: string,
+    ledgerSequence: number,
+  ): Promise<void> {
+    try {
+      await this.snippetTransactions.markConfirmed({
+        transactionHash: stellarTxHash,
+        ledgerSequence,
+      });
+
+      await appendActivityLog("snippet.transaction.confirmed", "snippet", {
+        resourceId: null,
+        metadata: { stellarTxHash, ledgerSequence },
+      });
+    } catch (error) {
+      console.warn(
+        `[StellarRecovery] Failed to confirm snippet association for ${stellarTxHash}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  /**
+   * Mark an existing association as failed when a transaction does not make
+   * it through. Records that never produced a hash were never associated, so
+   * there is nothing to clean up.
+   */
+  private async failMemoAssociation(
+    record: PendingStellarTransaction,
+    error: string,
+  ): Promise<void> {
+    if (!record.stellar_tx_hash) {
+      return;
+    }
+
+    try {
+      await this.snippetTransactions.markFailed({
+        transactionHash: record.stellar_tx_hash,
+        errorMessage: error,
+      });
+
+      await appendActivityLog("snippet.transaction.failed", "snippet", {
+        resourceId: null,
+        metadata: {
+          stellarTxHash: record.stellar_tx_hash,
+          txType: record.tx_type,
+          error,
+        },
+      });
+    } catch (associationError) {
+      console.warn(
+        `[StellarRecovery] Failed to mark snippet association failed for ${record.stellar_tx_hash}:`,
+        associationError instanceof Error ? associationError.message : associationError,
+      );
+    }
+  }
+}
+
+/**
+ * Snippet ids referenced by a pending transaction payload.
+ * Individual transactions carry `snippetId`; batch transactions carry
+ * `snippets: [{ id, hash }]`.
+ */
+function collectSnippetIds(payload: Record<string, unknown>): string[] {
+  if (typeof payload.snippetId === "string" && payload.snippetId.length > 0) {
+    return [payload.snippetId];
+  }
+
+  const batch = payload.snippets;
+  if (Array.isArray(batch)) {
+    return batch
+      .map((entry) => {
+        if (
+          entry &&
+          typeof entry === "object" &&
+          typeof (entry as { id?: unknown }).id === "string"
+        ) {
+          return (entry as { id: string }).id;
+        }
+        return null;
+      })
+      .filter((id): id is string => Boolean(id));
+  }
+
+  return [];
 }

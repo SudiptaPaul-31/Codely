@@ -4,9 +4,15 @@ import {
   PaginatedResult,
   SearchSnippetsOptions,
 } from "./snippet.repository";
-import { createSnippetSchema, updateSnippetSchema } from "./snippet.validator";
+import { createSnippetSchema, updateSnippetSchema, forkDuplicateSchema } from "./snippet.validator";
 import { appendActivityLog } from "@/lib/activity-logger";
+import { submitHashToStellar } from "@/lib/stellar";
 import { IPFSService } from "@/lib/ipfs.service";
+import {
+  hashSnippetContent,
+  SnippetOwnershipProof,
+  verifySnippetOwnershipProof,
+} from "@/lib/snippet-ownership-proof";
 import { StellarRecoveryService } from "@/lib/stellar-recovery.service";
 
 export class SnippetService {
@@ -69,10 +75,64 @@ export class SnippetService {
       }
 
       // First create the snippet
+      const requestedProof = validatedData.ownershipProof;
+      if (requestedProof) {
+        const proofCheck = verifySnippetOwnershipProof(requestedProof as SnippetOwnershipProof);
+        if (
+          !proofCheck.valid ||
+          requestedProof.ownerWallet.toUpperCase() !== validatedData.ownerWalletAddress.toUpperCase() ||
+          requestedProof.hash !== hashSnippetContent(validatedData.code)
+        ) {
+          await appendActivityLog("snippet.proof_verification_failed", "snippet", {
+            actorWallet: requestedProof.ownerWallet,
+            metadata: { error: proofCheck.error || "Proof does not match snippet" },
+          });
+          throw new Error("Invalid ownership proof");
+        }
+      }
       let snippet = await this.snippetRepository.create({
         ...validatedData,
-        ipfsCid
+        ipfsCid,
+        id: requestedProof?.snippetId,
       });
+
+      if (requestedProof) {
+        const proof = requestedProof as SnippetOwnershipProof;
+        if (proof.snippetId !== snippet.id) {
+          throw new Error("Ownership proof does not match snippet");
+        }
+        const result = verifySnippetOwnershipProof(proof);
+        if (
+          !result.valid ||
+          proof.ownerWallet.toUpperCase() !== String(snippet.owner_wallet_address).toUpperCase() ||
+          proof.hash !== hashSnippetContent(snippet.code)
+        ) {
+          await appendActivityLog("snippet.proof_verification_failed", "snippet", {
+            actorWallet: proof.ownerWallet,
+            resourceId: snippet.id,
+            metadata: { error: result.error || "Proof does not match snippet" },
+          });
+          throw new Error("Invalid ownership proof");
+        }
+        const anchor = await submitHashToStellar(
+          process.env.STELLAR_SECRET_KEY || "",
+          proof.signature,
+          proof.snippetId,
+          proof.createdAt,
+        );
+        if (!anchor.success || !anchor.transactionHash) {
+          throw new Error(anchor.error || "Failed to anchor ownership proof");
+        }
+        await this.snippetRepository.saveOwnershipProof(
+          proof,
+          anchor.transactionHash,
+        );
+        await appendActivityLog("snippet.proof_generated", "snippet", {
+          actorWallet: proof.ownerWallet,
+          resourceId: snippet.id,
+          metadata: { hash: proof.hash, createdAt: proof.createdAt },
+        });
+      }
 
       // If licenseType is provided, mint it via recovery service
       if (validatedData.licenseType && validatedData.licenseType !== "None") {
@@ -101,8 +161,25 @@ export class SnippetService {
       return snippet;
     } catch (error) {
       console.error("[Service] Error creating snippet:", error);
+      if (error instanceof Error && (error.message === "Invalid ownership proof" || error.message.includes("ownership proof"))) {
+        throw error;
+      }
       throw new Error("Failed to create snippet");
     }
+  }
+
+  async getOwnershipProof(id: string) {
+    const snippet = await this.getSnippetById(id);
+    const proof = await this.snippetRepository.findOwnershipProof(id);
+    const verification = proof
+      ? verifySnippetOwnershipProof(proof as SnippetOwnershipProof)
+      : { valid: false, error: "Ownership proof not found" };
+    await appendActivityLog(
+      verification.valid ? "snippet.proof_verified" : "snippet.proof_verification_failed",
+      "snippet",
+      { actorWallet: proof?.ownerWallet || snippet.owner_wallet_address, resourceId: id, metadata: { error: verification.error } },
+    );
+    return { proof, verified: verification.valid, error: verification.error };
   }
 
   async updateSnippet(id: string, data: unknown) {
@@ -165,6 +242,180 @@ export class SnippetService {
       }
       console.error("[Service] Error updating snippet:", error);
       throw new Error("Failed to update snippet");
+    }
+  }
+
+  /**
+   * Duplicate a snippet (creates an identical copy in the user's collection)
+   */
+  async duplicateSnippet(
+    snippetId: string,
+    userWalletAddress: string,
+    titleOverride?: string,
+  ) {
+    try {
+      const original = await this.snippetRepository.findById(snippetId);
+      if (!original) {
+        throw new Error("Snippet not found");
+      }
+
+      const title = titleOverride?.trim() || `${original.title} (Copy)`;
+      const tags = Array.isArray(original.tags)
+        ? original.tags
+        : (typeof original.tags === "string" ? JSON.parse(original.tags) : []);
+
+      let ipfsCid = original.ipfs_cid;
+      try {
+        ipfsCid = await IPFSService.uploadToIPFS(original.code);
+      } catch (ipfsErr) {
+        console.warn("[Service] Non-critical IPFS upload failure on duplicate:", ipfsErr);
+      }
+
+      const duplicate = await this.snippetRepository.create({
+        title,
+        description: original.description || "",
+        code: original.code,
+        language: original.language,
+        tags: tags.length > 0 ? tags : ["snippet"],
+        ownerWalletAddress: userWalletAddress,
+        forkedFromId: original.id,
+        isFork: false,
+        ipfsCid,
+      });
+
+      await appendActivityLog("snippet.duplicated", "snippet", {
+        actorWallet: userWalletAddress,
+        resourceId: duplicate.id,
+        metadata: {
+          originSnippetId: original.id,
+          originTitle: original.title,
+          title: duplicate.title,
+          language: duplicate.language,
+        },
+      });
+
+      return duplicate;
+    } catch (error) {
+      if (error instanceof Error && error.message === "Snippet not found") {
+        throw error;
+      }
+      console.error("[Service] Error duplicating snippet:", error);
+      throw new Error("Failed to duplicate snippet");
+    }
+  }
+
+  /**
+   * Fork a snippet (creates a derived snippet with editable content)
+   */
+  async forkSnippet(
+    snippetId: string,
+    userWalletAddress: string,
+    data?: unknown,
+  ) {
+    try {
+      const original = await this.snippetRepository.findById(snippetId);
+      if (!original) {
+        throw new Error("Snippet not found");
+      }
+
+      const validatedData = data ? (await import("./snippet.validator")).forkSnippetSchema.parse(data) : {};
+
+      const originalTags = Array.isArray(original.tags)
+        ? original.tags
+        : (typeof original.tags === "string" ? JSON.parse(original.tags) : []);
+
+      const title = validatedData.title?.trim() || `Fork of ${original.title}`;
+      const description = validatedData.description !== undefined ? validatedData.description : (original.description || "");
+      const code = validatedData.code !== undefined ? validatedData.code : original.code;
+      const language = validatedData.language !== undefined ? validatedData.language : original.language;
+      const tags = validatedData.tags && validatedData.tags.length > 0 ? validatedData.tags : (originalTags.length > 0 ? originalTags : ["fork"]);
+
+      let ipfsCid = original.ipfs_cid;
+      try {
+        ipfsCid = await IPFSService.uploadToIPFS(code);
+      } catch (ipfsErr) {
+        console.warn("[Service] Non-critical IPFS upload failure on fork:", ipfsErr);
+      }
+
+      let forked = await this.snippetRepository.create({
+        title,
+        description,
+        code,
+        language,
+        tags,
+        ownerWalletAddress: userWalletAddress,
+        forkedFromId: original.id,
+        isFork: true,
+        licenseType: validatedData.licenseType,
+        ipfsCid,
+      });
+
+      if (validatedData.licenseType && validatedData.licenseType !== "None") {
+        try {
+          const { mintSnippetLicenseOnStellar } = await import("@/lib/stellar");
+          const tx = await mintSnippetLicenseOnStellar({
+            snippetId: forked.id,
+            licenseType: validatedData.licenseType,
+            ownerWalletAddress: userWalletAddress,
+          });
+
+          if (tx.success && tx.transactionHash) {
+            forked = await this.snippetRepository.update(forked.id, {
+              licenseTransactionHash: tx.transactionHash,
+              licenseMetadata: {
+                type: validatedData.licenseType,
+                timestamp: tx.timestamp,
+                memo: tx.memo,
+              }
+            } as any);
+          }
+        } catch (err) {
+          console.error("[Service] License minting for fork failed:", err);
+        }
+      }
+
+      await appendActivityLog("snippet.forked", "snippet", {
+        actorWallet: userWalletAddress,
+        resourceId: forked.id,
+        metadata: {
+          originSnippetId: original.id,
+          originTitle: original.title,
+          title: forked.title,
+          language: forked.language,
+        },
+      });
+
+      return forked;
+    } catch (error) {
+      if (error instanceof Error && error.message === "Snippet not found") {
+        throw error;
+      }
+      console.error("[Service] Error forking snippet:", error);
+      throw error instanceof Error ? error : new Error("Failed to fork snippet");
+    }
+  }
+
+  /**
+   * Get all snippets derived/forked from a snippet
+   */
+  async getSnippetForks(snippetId: string) {
+    try {
+      return await this.snippetRepository.findForksBySnippetId(snippetId);
+    } catch (error) {
+      console.error("[Service] Error fetching snippet forks:", error);
+      throw new Error("Failed to fetch snippet forks");
+    }
+  }
+
+  /**
+   * Get origin/parent snippet of a forked snippet
+   */
+  async getSnippetOrigin(snippetId: string) {
+    try {
+      return await this.snippetRepository.findOriginSnippet(snippetId);
+    } catch (error) {
+      console.error("[Service] Error fetching snippet origin:", error);
+      throw new Error("Failed to fetch snippet origin");
     }
   }
 
@@ -291,4 +542,5 @@ export class SnippetService {
         : new Error("Failed to permanently delete snippet");
     }
   }
+
 }

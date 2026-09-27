@@ -1,16 +1,19 @@
 import { neon } from "@neondatabase/serverless";
 
 // Lazy initialize sql only when needed
-let sql: ReturnType<typeof neon> | null = null;
-function getSql() {
-  if (!sql) {
+let _sql: ReturnType<typeof neon> | null = null;
+export function getSql() {
+  if (!_sql) {
     if (!process.env.DATABASE_URL) {
       throw new Error("DATABASE_URL environment variable is not set");
     }
-    sql = neon(process.env.DATABASE_URL!);
+    _sql = neon(process.env.DATABASE_URL!);
   }
-  return sql;
+  return _sql;
 }
+
+export const sql = ((...args: any[]) => (getSql() as any)(...args)) as ReturnType<typeof neon>;
+
 
 // Ensure crypto is available
 import crypto from "crypto";

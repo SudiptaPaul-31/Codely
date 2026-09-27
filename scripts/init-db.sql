@@ -12,6 +12,8 @@ CREATE TABLE snippets (
   code TEXT NOT NULL,
   tags JSONB DEFAULT '[]'::jsonb,
   owner_wallet_address VARCHAR(255),
+  forked_from_id UUID REFERENCES snippets(id) ON DELETE SET NULL,
+  is_fork BOOLEAN DEFAULT false,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -20,6 +22,7 @@ CREATE TABLE snippets (
 CREATE INDEX IF NOT EXISTS idx_snippets_language ON snippets(language);
 CREATE INDEX IF NOT EXISTS idx_snippets_lower_language ON snippets(LOWER(language));
 CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON snippets(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_snippets_forked_from ON snippets(forked_from_id);
 CREATE INDEX IF NOT EXISTS idx_snippets_title_trgm ON snippets USING GIN (title gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_snippets_tags_gin ON snippets USING GIN (tags jsonb_path_ops);
 CREATE INDEX IF NOT EXISTS idx_snippets_search_vector ON snippets USING GIN (

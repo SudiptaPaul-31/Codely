@@ -95,7 +95,7 @@ export default function SnippetsPage() {
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
       <Sidebar />
-      <main className="min-w-0 flex-1 px-4 py-20 md:px-8 md:py-8">
+      <main id="main-content" className="min-w-0 flex-1 px-4 py-20 md:px-8 md:py-8">
         <div className="mx-auto max-w-6xl">
           <header className="mb-8">
             <div className="mb-2 flex items-center gap-3">

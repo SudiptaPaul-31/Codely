@@ -3,12 +3,10 @@ import { ShareService } from "../../share.service";
 import { ShareRepository } from "../../share.repository";
 import { SnippetRepository } from "../../snippet.repository";
 import { OwnershipMiddleware } from "../../ownership.middleware";
-import { z } from "zod";
-
-const createShareSchema = z.object({
-  isReadOnly: z.boolean().optional(),
-  expiresAt: z.string().optional().transform((val) => (val ? new Date(val) : null)),
-});
+import {
+  shareSnippetSchema,
+  validationErrorBody,
+} from "../../snippet.validator";
 
 const snippetRepository = new SnippetRepository();
 const shareRepository = new ShareRepository();
@@ -41,13 +39,12 @@ export async function POST(
     }
 
     const body = await req.json();
-    const parsed = createShareSchema.safeParse(body);
+    const parsed = shareSnippetSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.errors },
-        { status: 400 },
-      );
+      return NextResponse.json(validationErrorBody(parsed.error), {
+        status: 400,
+      });
     }
 
     const { isReadOnly, expiresAt } = parsed.data;
@@ -55,7 +52,8 @@ export async function POST(
     const result = await shareService.createShareLink({
       snippetId: id,
       isReadOnly: isReadOnly ?? true,
-      expiresAt,
+      // The validated ISO string is converted here for the service layer.
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
       createdByWalletAddress: walletAddress,
     });
 

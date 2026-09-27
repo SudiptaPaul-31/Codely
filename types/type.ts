@@ -11,6 +11,7 @@ export interface SnippetVersion {
   content: {
     title: string;
     description: string;
+    
     code: string;
     language: string;
     tags: string[];
@@ -54,3 +55,56 @@ export interface ActivityLogsResponse {
   hasMore: boolean;
 }
 
+// Snippet Interface
+export interface Snippet {
+  id: string;
+  title: string;
+  description: string;
+  code: string;
+  language: string;
+  tags: string[];
+  owner_wallet_address: string | null;
+  forked_from_id?: string | null;
+  is_fork?: boolean;
+  license_type?: string | null;
+  license_transaction_hash?: string | null;
+  license_metadata?: any;
+  ipfs_cid?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Snippet summary with derivation reference
+export interface SnippetSummary {
+  id: string;
+  title: string;
+  language: string;
+  description?: string;
+  tags?: string[];
+  owner_wallet_address?: string | null;
+  forked_from_id?: string | null;
+  is_fork?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Fork and Duplicate DTOs
+export interface ForkSnippetDTO {
+  title?: string;
+  description?: string;
+  code?: string;
+  language?: string;
+  tags?: string[];
+  licenseType?: string;
+}
+
+export interface DuplicateSnippetDTO {
+  title?: string;
+}
+
+export interface SnippetDerivationInfo {
+  isFork: boolean;
+  forkedFromId: string | null;
+  originSnippet?: SnippetSummary | null;
+  forkCount?: number;
+}

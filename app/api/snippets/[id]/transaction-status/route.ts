@@ -10,7 +10,10 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const transactions = await service.getBySnippetId(id);
+    const [transactions, snippetTransactions] = await Promise.all([
+      service.getBySnippetId(id),
+      service.getSnippetTransactions(id),
+    ]);
 
     return NextResponse.json({
       snippetId: id,
@@ -27,6 +30,18 @@ export async function GET(
         callbackStatus: tx.callback_status,
         createdAt: tx.created_at,
         updatedAt: tx.updated_at,
+      })),
+      // Stellar transactions whose memo references this snippet.
+      snippetTransactions: snippetTransactions.map((tx) => ({
+        id: tx.id,
+        memoRef: tx.memoRef,
+        transactionHash: tx.transactionHash,
+        ledgerSequence: tx.ledgerSequence,
+        status: tx.status,
+        txType: tx.txType,
+        errorMessage: tx.errorMessage,
+        createdAt: tx.createdAt,
+        updatedAt: tx.updatedAt,
       })),
     });
   } catch (error) {

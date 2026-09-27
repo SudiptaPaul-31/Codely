@@ -9,6 +9,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/cleanup",
+      "schedule": "17 3 * * *"
+    },
+    {
       "path": "/api/cron/stellar-recovery",
       "schedule": "*/2 * * * *"
     }

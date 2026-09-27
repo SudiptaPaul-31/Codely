@@ -3,6 +3,7 @@ import { neon } from "@neondatabase/serverless";
 import { logEvent } from "@/lib/audit";
 
 export async function GET(request: Request) {
+  
   try {
     const authHeader = request.headers.get('authorization');
     

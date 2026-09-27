@@ -4,7 +4,7 @@ import React from "react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Copy, Star } from "lucide-react";
+import { Copy, Files, GitFork, Star } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar";
 import Loader from "@/components/ui/loader";
 import { VersionHistoryPanel } from "@/components/VersionHistory";
@@ -12,6 +12,11 @@ import { PermissionsManager } from "@/components/PermissionsManager";
 import VerificationBadge from "@/components/verification-badge";
 import VerifyOwnershipButton from "@/components/verify-ownership-button";
 import { useWallet } from "@/components/WalletConnect";
+import { DerivationBadge } from "@/components/DerivationBadge";
+import { SnippetCardContextMenu } from "@/components/SnippetCardContextMenu";
+import { SnippetDetailModal } from "@/components/SnippetDetailModal";
+import { ForkSnippetModal, SnippetToFork } from "@/components/ForkSnippetModal";
+import { toast } from "sonner";
 
 interface Snippet {
   id: string;
@@ -21,6 +26,8 @@ interface Snippet {
   language: string;
   tags: string[];
   owner_wallet_address: string | null;
+  forked_from_id?: string | null;
+  is_fork?: boolean;
   created_at: string;
   updated_at: string;
   license_type?: string;
@@ -53,6 +60,10 @@ export default function FavoritesPage() {
   const [offset, setOffset] = useState(0);
   const [favoriteStatuses, setFavoriteStatuses] = useState<Record<string, boolean>>({});
   const [verificationStatuses, setVerificationStatuses] = useState<Record<string, VerificationStatus>>({});
+
+  // Modals
+  const [detailSnippetId, setDetailSnippetId] = useState<string | null>(null);
+  const [forkingSnippet, setForkingSnippet] = useState<SnippetToFork | null>(null);
 
   const fetchFavorites = async (loadMore = false) => {
     try {
@@ -166,9 +177,45 @@ export default function FavoritesPage() {
   const handleCopy = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code);
+      toast.success("Code copied to clipboard!");
     } catch (e) {
       console.error(e);
+      toast.error("Failed to copy code");
     }
+  };
+
+  const handleDuplicate = async (snippet: Snippet) => {
+    const walletAddress = wallet?.publicKey;
+    if (!walletAddress) {
+      toast.error("Please connect your wallet to duplicate snippets.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/snippets/${snippet.id}/duplicate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet-address": walletAddress,
+        },
+        body: JSON.stringify({ ownerWalletAddress: walletAddress }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || "Failed to duplicate snippet");
+      }
+
+      toast.success(`Duplicated "${snippet.title}" into your collection!`);
+      await fetchFavorites();
+    } catch (err: any) {
+      console.error("Duplicate failed:", err);
+      toast.error(err.message || "Failed to duplicate snippet");
+    }
+  };
+
+  const handleFork = (snippet: Snippet) => {
+    setForkingSnippet(snippet);
   };
 
   useEffect(() => {
@@ -179,7 +226,7 @@ export default function FavoritesPage() {
     <div className="flex min-h-screen bg-gray-950">
       <Sidebar />
 
-      <main className="flex-1 min-w-0 relative">
+      <main id="main-content" className="flex-1 min-w-0 relative">
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-20 left-10 w-72 h-72 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-glow-pulse" />
           <div className="absolute top-40 right-10 w-72 h-72 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-glow-pulse animation-delay-1000" />
@@ -191,7 +238,7 @@ export default function FavoritesPage() {
           </div>
 
           {loading ? (
-            <div className="w-full h-full flex items-center justify-center">
+            <div className="w-full h-full flex items-center justify-center py-20">
               <Loader />
             </div>
           ) : snippets.length === 0 ? (
@@ -211,130 +258,167 @@ export default function FavoritesPage() {
                       : false;
 
                   return (
-                    <Card
+                    <SnippetCardContextMenu
                       key={snippet.id}
-                      className="bg-slate-800/50 border-purple-500/30 backdrop-blur-xl hover:border-purple-500/60 transition overflow-hidden group"
+                      snippet={snippet}
+                      onViewDetails={() => setDetailSnippetId(snippet.id)}
+                      onDuplicate={() => handleDuplicate(snippet)}
+                      onFork={() => handleFork(snippet)}
+                      onCopyCode={() => handleCopy(snippet.code)}
                     >
-                      <div className="p-6 space-y-4">
-                        <div className="space-y-3">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0">
-                              <h3 className="text-lg font-semibold text-white mb-1 truncate">
-                                {snippet.title}
-                              </h3>
-                              <p className="text-sm text-gray-400 line-clamp-2">
-                                {snippet.description || "No description"}
-                              </p>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleFavorite(snippet.id);
-                              }}
-                              className={
-                                favoriteStatuses[snippet.id]
-                                  ? "text-amber-400 hover:text-amber-300"
-                                  : "text-gray-400 hover:text-gray-300"
-                              }
-                            >
-                              <Star
-                                className="w-5 h-5"
-                                fill={favoriteStatuses[snippet.id] ? "currentColor" : "none"}
-                              />
-                            </Button>
-                            {verificationStatus.verified && (
-                              <VerificationBadge
-                                verified={verificationStatus.verified}
-                                walletAddress={verificationStatus.walletAddress}
-                                verifiedAt={verificationStatus.verifiedAt}
-                              />
-                            )}
-                          </div>
-                          {snippet.license_type && (
-                            <div className="flex items-center gap-2 text-xs">
-                              <span className="px-1.5 py-0.5 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 font-medium">
-                                {snippet.license_type} License
-                              </span>
-                              {snippet.license_transaction_hash && (
-                                <a
-                                  href={`https://stellar.expert/explorer/testnet/tx/${snippet.license_transaction_hash}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-emerald-500/70 hover:text-emerald-400"
-                                  title="View License on Stellar"
-                                >
-                                  Licensed on-chain
-                                </a>
+                      <Card
+                        onClick={() => setDetailSnippetId(snippet.id)}
+                        className="bg-slate-800/50 border-purple-500/30 backdrop-blur-xl hover:border-purple-500/60 transition overflow-hidden group cursor-pointer"
+                      >
+                        <div className="p-6 space-y-4">
+                          <div className="space-y-3">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                <h3 className="text-lg font-semibold text-white mb-1 truncate group-hover:text-purple-200">
+                                  {snippet.title}
+                                </h3>
+                                <p className="text-sm text-gray-400 line-clamp-2">
+                                  {snippet.description || "No description"}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFavorite(snippet.id);
+                                }}
+                                className={
+                                  favoriteStatuses[snippet.id]
+                                    ? "text-amber-400 hover:text-amber-300"
+                                    : "text-gray-400 hover:text-gray-300"
+                                }
+                              >
+                                <Star
+                                  className="w-5 h-5"
+                                  fill={favoriteStatuses[snippet.id] ? "currentColor" : "none"}
+                                />
+                              </Button>
+                              {verificationStatus.verified && (
+                                <VerificationBadge
+                                  verified={verificationStatus.verified}
+                                  walletAddress={verificationStatus.walletAddress}
+                                  verifiedAt={verificationStatus.verifiedAt}
+                                />
                               )}
                             </div>
-                          )}
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="inline-block bg-purple-600/50 text-purple-100 text-xs px-3 py-1 rounded-full">
-                              {snippet.language}
-                            </span>
-                            {isOwner && !verificationStatus.verified && (
-                              <span className="text-xs text-slate-400">
-                                Owns snippet — ready to verify
+
+                            {snippet.forked_from_id && (
+                              <div className="pt-0.5">
+                                <DerivationBadge forkedFromId={snippet.forked_from_id} />
+                              </div>
+                            )}
+
+                            {snippet.license_type && (
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="px-1.5 py-0.5 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 font-medium">
+                                  {snippet.license_type} License
+                                </span>
+                                {snippet.license_transaction_hash && (
+                                  <a
+                                    href={`https://stellar.expert/explorer/testnet/tx/${snippet.license_transaction_hash}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="flex items-center gap-1 text-emerald-500/70 hover:text-emerald-400"
+                                    title="View License on Stellar"
+                                  >
+                                    Licensed on-chain
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="inline-block bg-purple-600/50 text-purple-100 text-xs px-3 py-1 rounded-full">
+                                {snippet.language}
                               </span>
+                              {isOwner && !verificationStatus.verified && (
+                                <span className="text-xs text-slate-400">
+                                  Owns snippet — ready to verify
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="bg-slate-900/50 border border-purple-500/20 rounded p-3 max-h-32 overflow-hidden">
+                            <pre className="text-xs text-gray-300 font-mono overflow-x-auto">
+                              {snippet.code.slice(0, 200)}
+                              {snippet.code.length > 200 ? "..." : ""}
+                            </pre>
+                          </div>
+                          {Array.isArray(snippet.tags) && snippet.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {snippet.tags.map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="text-xs bg-blue-600/30 text-blue-200 px-2 py-1 rounded"
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <p className="text-xs text-gray-500 border-t border-purple-500/20 pt-4">
+                            Created: {new Date(snippet.created_at).toLocaleDateString()}
+                          </p>
+                          <div
+                            className="flex flex-wrap gap-2 pt-4 border-t border-purple-500/20"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Button
+                              onClick={() => handleCopy(snippet.code)}
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 border-purple-400/50 text-purple-300 hover:bg-purple-400/10"
+                            >
+                              <Copy className="w-4 h-4 mr-1.5" /> Copy
+                            </Button>
+                            <Button
+                              onClick={() => handleDuplicate(snippet)}
+                              variant="outline"
+                              size="sm"
+                              className="border-purple-400/50 text-purple-300 hover:bg-purple-400/10"
+                              title="Duplicate snippet"
+                            >
+                              <Files className="w-4 h-4 mr-1.5" /> Duplicate
+                            </Button>
+                            <Button
+                              onClick={() => handleFork(snippet)}
+                              size="sm"
+                              className="bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-medium"
+                              title="Fork snippet"
+                            >
+                              <GitFork className="w-4 h-4 mr-1.5" /> Fork
+                            </Button>
+                            <VersionHistoryPanel
+                              snippetId={snippet.id}
+                              onRestore={() => fetchFavorites()}
+                            />
+                            {snippet.owner_wallet_address && (
+                              <PermissionsManager
+                                snippetId={snippet.id}
+                                snippetTitle={snippet.title}
+                                ownerWalletAddress={snippet.owner_wallet_address}
+                              />
+                            )}
+                            {!verificationStatus.verified && (
+                              <VerifyOwnershipButton
+                                snippetId={snippet.id}
+                                isOwner={isOwner}
+                                onSuccess={() => {
+                                  fetchFavorites();
+                                }}
+                                className="flex-1"
+                              />
                             )}
                           </div>
                         </div>
-                        <div className="bg-slate-900/50 border border-purple-500/20 rounded p-3 max-h-32 overflow-hidden">
-                          <pre className="text-xs text-gray-300 font-mono overflow-x-auto">
-                            {snippet.code.slice(0, 200)}
-                            {snippet.code.length > 200 ? "..." : ""}
-                          </pre>
-                        </div>
-                        {Array.isArray(snippet.tags) && snippet.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {snippet.tags.map((tag) => (
-                              <span
-                                key={tag}
-                                className="text-xs bg-blue-600/30 text-blue-200 px-2 py-1 rounded"
-                              >
-                                #{tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-500 border-t border-purple-500/20 pt-4">
-                          Created: {new Date(snippet.created_at).toLocaleDateString()}
-                        </p>
-                        <div className="flex flex-wrap gap-2 pt-4 border-t border-purple-500/20">
-                          <Button
-                            onClick={() => handleCopy(snippet.code)}
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 border-purple-400/50 text-purple-300 hover:bg-purple-400/10"
-                          >
-                            <Copy className="w-4 h-4 mr-2" /> Copy
-                          </Button>
-                          <VersionHistoryPanel
-                            snippetId={snippet.id}
-                            onRestore={() => fetchFavorites()}
-                          />
-                          {snippet.owner_wallet_address && (
-                            <PermissionsManager
-                              snippetId={snippet.id}
-                              snippetTitle={snippet.title}
-                              ownerWalletAddress={snippet.owner_wallet_address}
-                            />
-                          )}
-                          {!verificationStatus.verified && (
-                            <VerifyOwnershipButton
-                              snippetId={snippet.id}
-                              isOwner={isOwner}
-                              onSuccess={() => {
-                                fetchFavorites();
-                              }}
-                              className="flex-1"
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </Card>
+                      </Card>
+                    </SnippetCardContextMenu>
                   );
                 })}
               </div>
@@ -365,7 +449,32 @@ export default function FavoritesPage() {
             </>
           )}
         </div>
+
+        {/* Snippet Detail Modal */}
+        <SnippetDetailModal
+          snippetId={detailSnippetId}
+          isOpen={Boolean(detailSnippetId)}
+          onClose={() => setDetailSnippetId(null)}
+          onDuplicate={() => {
+            fetchFavorites();
+          }}
+          onFork={(snip) => {
+            setDetailSnippetId(null);
+            setForkingSnippet(snip);
+          }}
+        />
+
+        {/* Fork Snippet Modal */}
+        <ForkSnippetModal
+          snippet={forkingSnippet}
+          isOpen={Boolean(forkingSnippet)}
+          onClose={() => setForkingSnippet(null)}
+          onSuccess={() => {
+            fetchFavorites();
+          }}
+        />
       </main>
     </div>
   );
 }
+

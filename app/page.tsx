@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
   Code2,
+  
   Zap,
   Globe,
   Shield,
@@ -121,6 +122,8 @@ const CODE_LINES = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white text-slate-900">
+
+      <main id="main-content">
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden bg-gradient-to-b from-slate-50 via-white to-white pt-20 pb-28">
@@ -468,6 +471,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      </main>
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <footer className="border-t border-slate-100 bg-white">

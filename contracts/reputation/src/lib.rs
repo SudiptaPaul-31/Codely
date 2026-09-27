@@ -12,6 +12,7 @@ pub enum DataKey {
 #[contract]
 pub struct ReputationContract;
 
+
 #[contractimpl]
 impl ReputationContract {
     pub fn initialize(env: Env, admin: Address) {
