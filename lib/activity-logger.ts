@@ -38,7 +38,11 @@ export type ActivityAction =
   | "stellar.tx.confirmed"
   | "stellar.tx.applied"
   | "stellar.tx.failed"
-  | "stellar.tx.dead";
+  | "stellar.tx.dead"
+  | "stellar.memo.attached"
+  | "snippet.transaction.linked"
+  | "snippet.transaction.confirmed"
+  | "snippet.transaction.failed";
 
 export interface ActivityLogEntry {
   id: string;
