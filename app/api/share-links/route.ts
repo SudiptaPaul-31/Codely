@@ -5,6 +5,8 @@ import {
   ShareLinkVisibility,
 } from "@/lib/share-link-management.service";
 
+const ownershipMiddleware = new OwnershipMiddleware();
+
 function jsonError(message: string, status: number) {
   return NextResponse.json(
     { success: false, error: message },
@@ -30,6 +32,15 @@ export async function POST(req: NextRequest) {
 
     if (visibility && visibility !== "read-only" && visibility !== "read-write") {
       return jsonError("visibility must be 'read-only' or 'read-write'", 400);
+    }
+
+    if (!walletAddress) {
+      return jsonError("Wallet address is required", 401);
+    }
+
+    const ownership = await ownershipMiddleware.verifyOwnership(snippetId, walletAddress);
+    if (!ownership.isOwner) {
+      return ownership.error ?? jsonError("Only the snippet owner can create share links", 403);
     }
 
     const link = await shareLinkManagementService.createShareLink({
@@ -60,11 +71,21 @@ export async function POST(req: NextRequest) {
  */
 export async function GET(req: NextRequest) {
   try {
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
     const { searchParams } = new URL(req.url);
     const snippetId = searchParams.get("snippetId") || "";
 
     if (!snippetId) {
       return jsonError("snippetId query parameter is required", 400);
+    }
+
+    if (!walletAddress) {
+      return jsonError("Wallet address is required", 401);
+    }
+
+    const ownership = await ownershipMiddleware.verifyOwnership(snippetId, walletAddress);
+    if (!ownership.isOwner) {
+      return ownership.error ?? jsonError("Only the snippet owner can list share links", 403);
     }
 
     const links = await shareLinkManagementService.listActiveShareLinks(snippetId);

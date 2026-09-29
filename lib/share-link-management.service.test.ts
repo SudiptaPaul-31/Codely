@@ -122,6 +122,21 @@ describe("ShareLinkManagementService", () => {
     });
   });
 
+  describe("getShareLinkById", () => {
+    it("returns metadata for authorization checks without private fields", async () => {
+      const link = await service.createShareLink({
+        snippetId: "snip",
+        createdBy: "Gowner",
+      });
+
+      const found = await service.getShareLinkById(link.id);
+
+      expect(found).toEqual(link);
+      expect(found as any).not.toHaveProperty("createdBy");
+      expect(await service.getShareLinkById("missing")).toBeNull();
+    });
+  });
+
   describe("validateShareLink", () => {
     it("returns valid metadata without snippet content", async () => {
       const link = await service.createShareLink({

@@ -213,6 +213,15 @@ export class ShareLinkManagementService {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
+  /** Looks up link metadata for authorization checks without exposing audit data. */
+  async getShareLinkById(linkId: string): Promise<ShareLinkMetadata | null> {
+    const id = (linkId || "").trim();
+    if (!id) return null;
+
+    const link = await this.store.findById(id);
+    return link ? toMetadata(link) : null;
+  }
+
   async revokeShareLink(
     linkId: string,
     revokedBy: string | null = null,
