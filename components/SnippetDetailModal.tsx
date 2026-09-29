@@ -17,13 +17,14 @@ import {
   Calendar,
   User,
   Shield,
-  ExternalLink,
+  Share2,
 } from "lucide-react";
 import { DerivationBadge } from "./DerivationBadge";
 import { useWallet } from "./WalletConnect";
 import { toast } from "sonner";
 import { SnippetSummary } from "@/types/type";
 import Loader from "./ui/loader";
+import { ShareSnippetModal } from "./ShareSnippetModal";
 
 interface SnippetDetailModalProps {
   snippetId: string | null;
@@ -51,7 +52,6 @@ export function SnippetDetailModal({
   onClose,
   onDuplicate,
   onFork,
-  onDeleted,
 }: SnippetDetailModalProps) {
   const wallet = useWallet();
   const [snippet, setSnippet] = useState<SnippetDetail | null>(null);
@@ -59,11 +59,13 @@ export function SnippetDetailModal({
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !snippetId) {
       setSnippet(null);
       setOriginSnippet(null);
+      setSharing(false);
       return;
     }
 
@@ -155,9 +157,16 @@ export function SnippetDetailModal({
     }
   };
 
+  const canShare = Boolean(
+    snippet &&
+    wallet?.publicKey &&
+    (!snippet.owner_wallet_address || snippet.owner_wallet_address === wallet.publicKey),
+  );
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl bg-slate-900 border-purple-500/30 text-slate-100 backdrop-blur-2xl max-h-[90vh] overflow-y-auto p-6">
+    <>
+      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="max-w-3xl bg-slate-900 border-purple-500/30 text-slate-100 backdrop-blur-2xl max-h-[90vh] overflow-y-auto p-6">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader />
@@ -278,6 +287,18 @@ export function SnippetDetailModal({
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setSharing(true)}
+                disabled={!canShare}
+                title={canShare ? "Share this snippet" : "Only the snippet owner can share it"}
+                className="border-purple-500/40 text-purple-300 hover:bg-purple-600/20 hover:text-white"
+              >
+                <Share2 className="h-4 w-4 mr-1.5" />
+                Share
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleCopy}
                 className="border-slate-700 text-slate-300 hover:bg-slate-800"
               >
@@ -315,8 +336,18 @@ export function SnippetDetailModal({
             </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {snippet && (
+        <ShareSnippetModal
+          snippetId={snippet.id}
+          snippetTitle={snippet.title}
+          isOpen={sharing}
+          onClose={() => setSharing(false)}
+        />
+      )}
+    </>
   );
 }
 
