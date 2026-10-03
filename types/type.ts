@@ -70,6 +70,7 @@ export interface Snippet {
   license_transaction_hash?: string | null;
   license_metadata?: any;
   ipfs_cid?: string | null;
+  visibility?: "private" | "public" | "shared";
   created_at: string;
   updated_at: string;
 }
@@ -84,6 +85,7 @@ export interface SnippetSummary {
   owner_wallet_address?: string | null;
   forked_from_id?: string | null;
   is_fork?: boolean;
+  visibility?: "private" | "public" | "shared";
   created_at?: string;
   updated_at?: string;
 }

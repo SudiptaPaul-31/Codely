@@ -94,6 +94,7 @@ export const createSnippetSchema = z.object({
   ownerWalletAddress: walletAddressSchema,
   licenseType: licenseTypeSchema,
   visibility: visibilitySchema.default("private"),
+  sharedWith: z.array(z.string().min(1)).optional(),
   forkedFromId: z.string().uuid("Invalid origin snippet UUID").nullable().optional(),
   isFork: z.boolean().optional(),
   ownershipProof: z.object({

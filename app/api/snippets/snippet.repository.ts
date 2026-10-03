@@ -10,11 +10,17 @@ export interface PaginationOptions {
   offset: number;
 }
 
+export type SnippetVisibility = "private" | "public" | "shared";
+
 export interface SearchSnippetsOptions extends PaginationOptions {
   title?: string;
   language?: string;
   tags?: string[];
   keyword?: string;
+  /** Optional exact visibility filter */
+  visibility?: SnippetVisibility;
+  /** When set, only return snippets the viewer may see */
+  viewerWalletAddress?: string;
 }
 
 // Paginated result interface
@@ -100,24 +106,60 @@ export class SnippetRepository {
   }
 
 
-  async findAll(options?: PaginationOptions) {
+  async findAll(options?: PaginationOptions & { visibility?: SnippetVisibility; viewerWalletAddress?: string }) {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
+    const visibility = options?.visibility ?? null;
+    const viewer = options?.viewerWalletAddress ?? null;
 
-    // Get total count for pagination metadata (excluding soft-deleted)
-    const countResult = await this.sql`SELECT COUNT(*) as total FROM snippets WHERE is_deleted = false`;
+    // Anonymous listings only see public snippets. Authenticated viewers also see
+    // their own snippets and ones explicitly shared with them.
+    const countResult = await this.sql`
+      SELECT COUNT(*) as total FROM snippets s
+      WHERE s.is_deleted = false
+        AND (${visibility}::text IS NULL OR s.visibility = ${visibility})
+        AND (
+          (${viewer}::text IS NULL AND s.visibility = 'public')
+          OR (
+            ${viewer}::text IS NOT NULL
+            AND (
+              s.visibility = 'public'
+              OR s.owner_wallet_address = ${viewer}
+              OR s.id IN (
+                SELECT snippet_id FROM snippet_share_users
+                WHERE user_wallet_address = ${viewer}
+              )
+            )
+          )
+        )
+    `;
     const total = Number(countResult[0]?.total ?? 0);
 
-    // Fetch paginated snippets with consistent ordering by created_at DESC (excluding soft-deleted)
     const result = await this.sql`
-      SELECT * FROM snippets 
-      WHERE is_deleted = false
-      ORDER BY created_at DESC 
+      SELECT s.*
+      FROM snippets s
+      WHERE s.is_deleted = false
+        AND (${visibility}::text IS NULL OR s.visibility = ${visibility})
+        AND (
+          (${viewer}::text IS NULL AND s.visibility = 'public')
+          OR (
+            ${viewer}::text IS NOT NULL
+            AND (
+              s.visibility = 'public'
+              OR s.owner_wallet_address = ${viewer}
+              OR s.id IN (
+                SELECT snippet_id FROM snippet_share_users
+                WHERE user_wallet_address = ${viewer}
+              )
+            )
+          )
+        )
+      ORDER BY s.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
 
     const data = result as any[];
-    
+
     return {
       data,
       total,
@@ -136,44 +178,78 @@ export class SnippetRepository {
     const keyword = options.keyword?.trim() || null;
     const tags = options.tags?.length ? options.tags : null;
     const tagsJson = tags ? JSON.stringify(tags) : null;
+    const visibility = options.visibility ?? null;
+    const viewer = options.viewerWalletAddress ?? null;
 
     const countResult = await this.sql`
       SELECT COUNT(*) AS total
-      FROM snippets
-      WHERE (${title}::text IS NULL OR title ILIKE ${titlePattern})
-        AND (${language}::text IS NULL OR LOWER(language) = LOWER(${language}))
-        AND (${tagsJson}::jsonb IS NULL OR tags @> ${tagsJson}::jsonb)
+      FROM snippets s
+      WHERE (${title}::text IS NULL OR s.title ILIKE ${titlePattern})
+        AND (${language}::text IS NULL OR LOWER(s.language) = LOWER(${language}))
+        AND (${tagsJson}::jsonb IS NULL OR s.tags @> ${tagsJson}::jsonb)
+        AND (${visibility}::text IS NULL OR s.visibility = ${visibility})
+        AND (
+          (${viewer}::text IS NULL AND s.visibility = 'public')
+          OR (
+            ${viewer}::text IS NOT NULL
+            AND (
+              s.visibility = 'public'
+              OR s.owner_wallet_address = ${viewer}
+              OR s.id IN (
+                SELECT snippet_id FROM snippet_share_users
+                WHERE user_wallet_address = ${viewer}
+              )
+            )
+          )
+        )
         AND (
           ${keyword}::text IS NULL
           OR (
-            setweight(to_tsvector('simple', COALESCE(title, '')), 'A') ||
-            setweight(to_tsvector('simple', COALESCE(description, '')), 'B') ||
-            setweight(to_tsvector('simple', COALESCE(code, '')), 'C') ||
-            setweight(to_tsvector('simple', COALESCE(language, '')), 'B') ||
-            setweight(jsonb_to_tsvector('simple', COALESCE(tags, '[]'::jsonb), '["string"]'), 'B')
+            setweight(to_tsvector('simple', COALESCE(s.title, '')), 'A') ||
+            setweight(to_tsvector('simple', COALESCE(s.description, '')), 'B') ||
+            setweight(to_tsvector('simple', COALESCE(s.code, '')), 'C') ||
+            setweight(to_tsvector('simple', COALESCE(s.language, '')), 'B') ||
+            setweight(jsonb_to_tsvector('simple', COALESCE(s.tags, '[]'::jsonb), '["string"]'), 'B')
           ) @@ websearch_to_tsquery('simple', ${keyword})
         )
+        AND s.is_deleted = false
     `;
 
     const total = Number(countResult[0]?.total ?? 0);
 
     const result = await this.sql`
-      SELECT *
-      FROM snippets
-      WHERE (${title}::text IS NULL OR title ILIKE ${titlePattern})
-        AND (${language}::text IS NULL OR LOWER(language) = LOWER(${language}))
-        AND (${tagsJson}::jsonb IS NULL OR tags @> ${tagsJson}::jsonb)
+      SELECT s.*
+      FROM snippets s
+      WHERE (${title}::text IS NULL OR s.title ILIKE ${titlePattern})
+        AND (${language}::text IS NULL OR LOWER(s.language) = LOWER(${language}))
+        AND (${tagsJson}::jsonb IS NULL OR s.tags @> ${tagsJson}::jsonb)
+        AND (${visibility}::text IS NULL OR s.visibility = ${visibility})
+        AND (
+          (${viewer}::text IS NULL AND s.visibility = 'public')
+          OR (
+            ${viewer}::text IS NOT NULL
+            AND (
+              s.visibility = 'public'
+              OR s.owner_wallet_address = ${viewer}
+              OR s.id IN (
+                SELECT snippet_id FROM snippet_share_users
+                WHERE user_wallet_address = ${viewer}
+              )
+            )
+          )
+        )
         AND (
           ${keyword}::text IS NULL
           OR (
-            setweight(to_tsvector('simple', COALESCE(title, '')), 'A') ||
-            setweight(to_tsvector('simple', COALESCE(description, '')), 'B') ||
-            setweight(to_tsvector('simple', COALESCE(code, '')), 'C') ||
-            setweight(to_tsvector('simple', COALESCE(language, '')), 'B') ||
-            setweight(jsonb_to_tsvector('simple', COALESCE(tags, '[]'::jsonb), '["string"]'), 'B')
+            setweight(to_tsvector('simple', COALESCE(s.title, '')), 'A') ||
+            setweight(to_tsvector('simple', COALESCE(s.description, '')), 'B') ||
+            setweight(to_tsvector('simple', COALESCE(s.code, '')), 'C') ||
+            setweight(to_tsvector('simple', COALESCE(s.language, '')), 'B') ||
+            setweight(jsonb_to_tsvector('simple', COALESCE(s.tags, '[]'::jsonb), '["string"]'), 'B')
           ) @@ websearch_to_tsquery('simple', ${keyword})
         )
-      ORDER BY created_at DESC
+        AND s.is_deleted = false
+      ORDER BY s.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
 
@@ -195,11 +271,51 @@ export class SnippetRepository {
     return result[0] || null;
   }
 
+  async findSharedUsers(snippetId: string) {
+    const result = await this.sql`
+      SELECT user_wallet_address, granted_by_wallet_address, created_at AS granted_at
+      FROM snippet_share_users
+      WHERE snippet_id = ${snippetId}
+      ORDER BY created_at ASC
+    `;
+    return result as any[];
+  }
+
+  async addSharedUser(snippetId: string, userWalletAddress: string, grantedBy: string) {
+    const result = await this.sql`
+      INSERT INTO snippet_share_users (snippet_id, user_wallet_address, granted_by_wallet_address)
+      VALUES (${snippetId}, ${userWalletAddress}, ${grantedBy})
+      ON CONFLICT (snippet_id, user_wallet_address) DO NOTHING
+      RETURNING *
+    `;
+    return result[0] || null;
+  }
+
+  async removeSharedUser(snippetId: string, userWalletAddress: string) {
+    const result = await this.sql`
+      DELETE FROM snippet_share_users
+      WHERE snippet_id = ${snippetId} AND user_wallet_address = ${userWalletAddress}
+      RETURNING *
+    `;
+    return result[0] || null;
+  }
+
+  async isSharedWith(snippetId: string, userWalletAddress: string) {
+    const result = await this.sql`
+      SELECT 1 FROM snippet_share_users
+      WHERE snippet_id = ${snippetId} AND user_wallet_address = ${userWalletAddress}
+      LIMIT 1
+    `;
+    return result.length > 0;
+  }
+
   async create(data: CreateSnippetDTO & { id?: string; licenseTransactionHash?: string; licenseMetadata?: any; ipfsCid?: string; originalSnippetId?: string }) {
     const id = data.id ?? crypto.randomUUID();
     const createdAt = new Date();
     const forkedFromId = data.forkedFromId || null;
     const isFork = Boolean(data.isFork);
+
+    const visibility = data.visibility || "private";
 
     const result = await this.sql`
       INSERT INTO snippets (
@@ -207,6 +323,7 @@ export class SnippetRepository {
         forked_from_id, is_fork,
         license_type, license_transaction_hash, license_metadata, ipfs_cid,
         original_snippet_id,
+        visibility,
         created_at, updated_at
       ) 
       VALUES (
@@ -216,6 +333,7 @@ export class SnippetRepository {
         ${data.licenseType || null}, ${data.licenseTransactionHash || null},
         ${data.licenseMetadata ? JSON.stringify(data.licenseMetadata) : null},
         ${data.ipfsCid || null}, ${data.originalSnippetId || null},
+        ${visibility},
         ${createdAt}, ${createdAt}
       ) 
       RETURNING *

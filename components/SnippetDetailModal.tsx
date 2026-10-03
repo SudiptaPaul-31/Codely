@@ -24,6 +24,13 @@ import { useWallet } from "./WalletConnect";
 import { toast } from "sonner";
 import { SnippetSummary } from "@/types/type";
 import Loader from "./ui/loader";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface SnippetDetailModalProps {
   snippetId: string | null;
@@ -43,6 +50,7 @@ export interface SnippetDetail extends SnippetSummary {
   updated_at?: string;
   forked_from_id?: string | null;
   is_fork?: boolean;
+  visibility?: "private" | "public" | "shared";
 }
 
 export function SnippetDetailModal({
@@ -59,6 +67,12 @@ export function SnippetDetailModal({
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [savingVisibility, setSavingVisibility] = useState(false);
+
+  const isOwner =
+    !!snippet?.owner_wallet_address &&
+    !!wallet?.publicKey &&
+    snippet.owner_wallet_address === wallet.publicKey;
 
   useEffect(() => {
     if (!isOpen || !snippetId) {
@@ -155,6 +169,38 @@ export function SnippetDetailModal({
     }
   };
 
+  const handleChangeVisibility = async (
+    visibility: "private" | "public" | "shared",
+  ) => {
+    if (!snippet || !wallet?.publicKey) return;
+
+    try {
+      setSavingVisibility(true);
+      const res = await fetch(`/api/snippets/${snippet.id}/visibility`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet-address": wallet.publicKey,
+          ...(wallet?.token ? { Authorization: `Bearer ${wallet.token}` } : {}),
+        },
+        body: JSON.stringify({ visibility }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.error || "Failed to change visibility");
+      }
+
+      setSnippet({ ...snippet, visibility });
+      toast.success(`Snippet is now ${visibility}`);
+    } catch (err: any) {
+      console.error("Visibility change error:", err);
+      toast.error(err.message || "Failed to change visibility");
+    } finally {
+      setSavingVisibility(false);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-3xl bg-slate-900 border-purple-500/30 text-slate-100 backdrop-blur-2xl max-h-[90vh] overflow-y-auto p-6">
@@ -191,6 +237,19 @@ export function SnippetDetailModal({
                 )}
               </div>
 
+              
+                {snippet.visibility && snippet.visibility !== "public" && (
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border ${
+                      snippet.visibility === "private"
+                        ? "bg-rose-500/10 border-rose-500/30 text-rose-300"
+                        : "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                    }`}
+                  >
+                    {snippet.visibility === "private" ? "Private" : "Shared"}
+                  </span>
+                )}
+
               <DialogTitle className="text-2xl font-bold text-white tracking-tight">
                 {snippet.title}
               </DialogTitle>
@@ -201,6 +260,36 @@ export function SnippetDetailModal({
                 </DialogDescription>
               )}
             </DialogHeader>
+
+            {isOwner && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-purple-500/20 bg-slate-900/60 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-white">Visibility</p>
+                  <p className="text-xs text-slate-400">
+                    Who can see this snippet.
+                  </p>
+                </div>
+                <Select
+                  value={snippet.visibility || "private"}
+                  onValueChange={(v) =>
+                    handleChangeVisibility(
+                      v as "private" | "public" | "shared",
+                    )
+                  }
+                  disabled={savingVisibility}
+                >
+                  <SelectTrigger className="w-44 bg-slate-800/60 border-purple-500/30 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="private">Private</SelectItem>
+                    <SelectItem value="public">Public</SelectItem>
+                    <SelectItem value="shared">Shared</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
 
             {/* Code Block with Header Actions */}
             <div className="rounded-xl border border-purple-500/20 bg-slate-950 overflow-hidden shadow-inner">

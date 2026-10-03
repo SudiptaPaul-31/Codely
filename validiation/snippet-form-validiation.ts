@@ -18,6 +18,10 @@ export const snippetSchema = z.object({
   tags: z.string().optional(),
 
   licenseType: z.string().optional(),
+
+  visibility: z.enum(["private", "public", "shared"]).default("private"),
+
+  sharedWith: z.string().optional(),
 });
 
 export type SnippetFormValues = z.infer<typeof snippetSchema>;

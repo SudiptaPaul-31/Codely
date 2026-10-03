@@ -72,8 +72,23 @@ export async function GET(req: NextRequest) {
     );
     const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10), 0);
 
-    // Handle backward compatibility: if no pagination params, return all (first page)
-    const result = await service.getAllSnippets({ limit, offset });
+    // Visibility-aware listing: anonymous → public only; wallet header → public+own+shared
+    const viewerWallet =
+      (await OwnershipMiddleware.extractWalletAddress(req)) ||
+      searchParams.get("wallet") ||
+      undefined;
+    const visibilityParam = searchParams.get("visibility");
+    const result = await service.getAllSnippets({
+      limit,
+      offset,
+      visibility:
+        visibilityParam === "private" ||
+        visibilityParam === "public" ||
+        visibilityParam === "shared"
+          ? visibilityParam
+          : undefined,
+      viewerWalletAddress: viewerWallet || undefined,
+    });
 
     return NextResponse.json(result);
   } catch (error) {
@@ -147,7 +162,7 @@ export async function POST(req: NextRequest) {
     await appendActivityLog("snippet.created", "snippet", {
       actorWallet: walletAddress,
       resourceId: snippet.id,
-      metadata: { title: snippet.title, language: snippet.language, tags: snippet.tags },
+      metadata: { title: snippet.title, language: snippet.language, tags: snippet.tags, visibility: (snippet as any).visibility || "private" },
       ipAddress: extractIp(req.headers),
       userAgent: extractUserAgent(req.headers),
     });
