@@ -3,11 +3,11 @@ import { neon } from "@neondatabase/serverless";
 import { logEvent } from "@/lib/audit";
 
 export async function GET(request: Request) {
-  
   try {
     const authHeader = request.headers.get('authorization');
-    
-    if (authHeader !== `Bearer ${process.env.ADMIN_API_KEY}`) {
+    const adminKey = process.env.ADMIN_API_KEY;
+
+    if (!adminKey || authHeader !== `Bearer ${adminKey}`) {
       await logEvent("admin_unauthorized_access", "UNKNOWN", undefined, "Failed metrics export attempt");
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -18,12 +18,12 @@ export async function GET(request: Request) {
     }
 
     const sql = neon(url);
-    const logs = await sql`
+    const logs = await sql`
       SELECT * FROM audits 
       ORDER BY created_at DESC 
       LIMIT 1000
     `;
-    
+
     await logEvent("metrics_exported", "SYSTEM_ADMIN", undefined, `Exported ${logs.length} logs for monitoring`);
 
     return NextResponse.json({

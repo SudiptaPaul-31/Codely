@@ -1,0 +1,18 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "main",
+    "origin",
+    "security/issue-220-implement-stellar-transaction-fee-estimation"
+  ],
+  "parent": {
+    "main": null,
+    "origin": "main",
+    "security/issue-220-implement-stellar-transaction-fee-estimation": "main"
+  },
+  "order": [
+    "main",
+    "origin",
+    "security/issue-220-implement-stellar-transaction-fee-estimation"
+  ]
+}
