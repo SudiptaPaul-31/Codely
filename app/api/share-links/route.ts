@@ -21,8 +21,11 @@ export async function POST(req: NextRequest) {
     const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
     const body = await req.json().catch(() => ({}));
     const snippetId = typeof body.snippetId === "string" ? body.snippetId : "";
-    const visibility = body.visibility as ShareLinkVisibility | undefined;
     const expiresAt = body.expiresAt ?? null;
+    let visibility = body.visibility as ShareLinkVisibility | undefined;
+    if (visibility === ("public" as any)) {
+      visibility = "read-write";
+    }
 
     if (!snippetId) {
       return jsonError("snippetId is required", 400);
@@ -31,6 +34,9 @@ export async function POST(req: NextRequest) {
     if (visibility && visibility !== "read-only" && visibility !== "read-write") {
       return jsonError("visibility must be 'read-only' or 'read-write'", 400);
     }
+
+    const ownershipResponse = await authorizeSnippet(snippetId, walletAddress);
+    if (ownershipResponse) return ownershipResponse;
 
     const link = await shareLinkManagementService.createShareLink({
       snippetId,
@@ -67,6 +73,10 @@ export async function GET(req: NextRequest) {
       return jsonError("snippetId query parameter is required", 400);
     }
 
+    const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
+    const ownershipResponse = await authorizeSnippet(snippetId, walletAddress);
+    if (ownershipResponse) return ownershipResponse;
+
     const links = await shareLinkManagementService.listActiveShareLinks(snippetId);
     return NextResponse.json({
       success: true,
@@ -78,4 +88,28 @@ export async function GET(req: NextRequest) {
     console.error("[share-links] GET error:", error);
     return jsonError(message, 500);
   }
+}
+
+/** Require ownership for snippets that have an owner; legacy unowned snippets remain shareable. */
+export async function authorizeSnippet(
+  snippetId: string,
+  walletAddress: string | null,
+): Promise<NextResponse | null> {
+  const ownershipMiddleware = new OwnershipMiddleware();
+  const ownershipResult = await ownershipMiddleware.verifyOwnership(
+    snippetId,
+    walletAddress || "",
+  );
+  if (ownershipResult.isOwner) return null;
+
+  const error = ownershipResult.error;
+  const status = error?.status ?? 403;
+  let errorData: Record<string, string> = {};
+  if (error) {
+    errorData = await error.json().catch(() => ({}));
+  }
+  return jsonError(
+    errorData.message || (status === 404 ? "Snippet not found" : "Forbidden: you do not have permission to manage share links"),
+    status === 404 ? 404 : status === 500 ? 500 : 403,
+  );
 }

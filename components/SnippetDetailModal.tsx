@@ -18,8 +18,10 @@ import {
   User,
   Shield,
   ExternalLink,
+  Share2,
 } from "lucide-react";
 import { DerivationBadge } from "./DerivationBadge";
+import { SnippetShareModal } from "./SnippetShareModal";
 import { useWallet } from "./WalletConnect";
 import { toast } from "sonner";
 import { SnippetSummary } from "@/types/type";
@@ -39,6 +41,7 @@ interface SnippetDetailModalProps {
   onDuplicate?: (snippet: SnippetDetail) => Promise<void> | void;
   onFork?: (snippet: SnippetDetail) => void;
   onDeleted?: () => void;
+  onShare?: (snippet: SnippetDetail) => void;
 }
 
 export interface SnippetDetail extends SnippetSummary {
@@ -60,6 +63,7 @@ export function SnippetDetailModal({
   onDuplicate,
   onFork,
   onDeleted,
+  onShare,
 }: SnippetDetailModalProps) {
   const wallet = useWallet();
   const [snippet, setSnippet] = useState<SnippetDetail | null>(null);
@@ -68,6 +72,7 @@ export function SnippetDetailModal({
   const [copied, setCopied] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [savingVisibility, setSavingVisibility] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
 
   const isOwner =
     !!snippet?.owner_wallet_address &&
@@ -394,6 +399,20 @@ export function SnippetDetailModal({
               </Button>
 
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShareModalOpen(true);
+                  if (onShare && snippet) onShare(snippet);
+                }}
+                className="border-purple-500/40 text-purple-300 hover:bg-purple-600/20 hover:text-white"
+                data-testid="detail-share-button"
+              >
+                <Share2 className="h-4 w-4 mr-1.5" />
+                Share
+              </Button>
+
+              <Button
                 size="sm"
                 onClick={() => onFork && onFork(snippet)}
                 className="bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-medium gap-1.5 shadow-md"
@@ -405,6 +424,16 @@ export function SnippetDetailModal({
           </div>
         )}
       </DialogContent>
+
+      {snippet && (
+        <SnippetShareModal
+          snippetId={snippet.id}
+          snippetTitle={snippet.title}
+          isOpen={shareModalOpen}
+          onClose={() => setShareModalOpen(false)}
+          isOwner={isOwner}
+        />
+      )}
     </Dialog>
   );
 }
