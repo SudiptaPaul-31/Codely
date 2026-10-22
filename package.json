@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "node api.js && next build",
-    "dev": "node api.js && next dev",
+    "build": "next build",
+    "dev": "next dev",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
-    "start": "node api.js && next start",
+    "start": "next start",
     "test": "jest"
   },
   "dependencies": {
