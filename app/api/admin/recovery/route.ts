@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { restoreBackup, listBackups } from '@/lib/backup.service';
 import { logEvent } from "@/lib/audit";
+import { estimateFee, validateTransaction, getNetworkFees } from '@/lib/stellar/fee-estimation.service';
 
 export async function POST(request: Request) {
   try {
@@ -13,13 +14,37 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { filename, snippetIds } = body;
+    const { filename, snippetIds, transaction } = body;
 
     if (!filename) {
       return NextResponse.json(
         { error: 'Filename is required' },
         { status: 400 }
       );
+    }
+
+    // When a Stellar transaction accompanies the recovery, estimate fees and
+    // validate the wallet balance before proceeding.
+    if (transaction) {
+      const feeEstimate = await estimateFee(transaction);
+      if (fefEstimate.feeStatus === 'unable_to_estimate') {
+        return NextResponse.json(
+          { success: false, error: 'Unable to estimate network fee. Please retry.' },
+          { status: 503 }
+        );
+      }
+
+      const validation = await validateTransaction(transaction, feeEstimate);
+      if (!validation.balanceSufficient) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Insufficient balance to cover transaction amount and network fee',
+            data: { feeEstimate, validation }
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const result = await restoreBackup(filename, snippetIds);
@@ -50,16 +75,20 @@ export async function GET(request: Request) {
     }
 
     const backups = listBackups();
+    const networkFees = await getNetworkFees();
     await logEvent("admin_backups_listed", "SYSTEM_ADMIN", undefined, "Admin accessed backup list");
 
     return NextResponse.json({
       success: true,
-      data: backups
+      data: backups,
+      networkFees
     });
   } catch (error: any) {
     console.error('[Admin/Recovery] Error:', error);
-    return NextResponse.json(
-      { success: false, error: error.message },
+    return NextResponse.json({
+      success: false,
+      error: error.message
+    },
       { status: 500 }
     );
   }
