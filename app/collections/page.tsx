@@ -1,4 +1,4 @@
-"use client";
+"tuse client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { Sidebar } from "@/components/Sidebar";
@@ -15,6 +15,7 @@ import { recordRecentSnippet } from "@/lib/recent-snippets-storage";
 import { DerivationBadge } from "@/components/DerivationBadge";
 import { SnippetDetailModal } from "@/components/SnippetDetailModal";
 import { ForkSnippetModal, SnippetToFork } from "@/components/ForkSnippetModal";
+import { EmbedSnippetModal } from "@/components/EmbedSnippetModal";
 
 interface Collection {
   id: string;
@@ -39,6 +40,7 @@ interface Snippet {
   is_fork?: boolean;
   license_type?: string;
   license_transaction_hash?: string;
+  is_public?: boolean;
 }
 
 export default function CollectionsPage() {
@@ -58,6 +60,7 @@ export default function CollectionsPage() {
   // Modals
   const [detailSnippetId, setDetailSnippetId] = useState<string | null>(null);
   const [forkingSnippet, setForkingSnippet] = useState<SnippetToFork | null>(null);
+  const [embedSnippet, setEmbedSnippet] = useState<Snippet | null>(null);
 
   const fetchMine = useCallback(async () => {
     if (!walletAddress) return;
@@ -243,7 +246,7 @@ export default function CollectionsPage() {
                   <button
                     key={col.id}
                     onClick={() => openCollection(col)}
-                    className={`w-full text-left rounded-xl border p-4 transition-all hover:border-indigo-500/50 hover:bg-slate-800/60 ${
+                    className={`w-full text-left rounded-xl border p-4 transition-all hover:border-indigo-500/55 hover:bg-slate-800/60 ${
                       selectedCollection?.id === col.id
                         ? "border-indigo-500 bg-slate-800/80"
                         : "border-slate-700 bg-slate-900"
@@ -298,190 +301,109 @@ export default function CollectionsPage() {
                 {!loadingMine && displayed.length === 0 && (tab !== "mine" || walletAddress) && (
                   <div className="rounded-xl border border-slate-700 bg-slate-900 p-6 text-center">
                     <Layers className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-                    <p className="text-slate-400 text-sm">No collections found.</p>
+                    <p className="text-sm text-slate-400">No collections found.</p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Right: detail panel */}
-            <div className="space-y-5">
-              {/* Create panel */}
-              {tab === "mine" && (
-                <div className="rounded-xl border border-slate-700 bg-slate-900 p-5">
-                  <CollectionManager />
-                </div>
-              )}
-
-              {/* Selected collection detail */}
-              {selectedCollection && (
-                <div className="rounded-xl border border-indigo-500/30 bg-slate-900 p-5 space-y-4">
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-100 mb-1">
-                      {selectedCollection.title}
-                    </h2>
-                    {selectedCollection.description && (
-                      <p className="text-sm text-slate-400">{selectedCollection.description}</p>
-                    )}
-                  </div>
-
-                  {selectedCollection.tags?.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedCollection.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* On-chain info */}
-                  {selectedCollection.on_chain_tx_hash && (
-                    <div className="rounded-lg bg-indigo-950/40 border border-indigo-800/40 p-3 text-xs space-y-1">
-                      <p className="font-semibold text-indigo-300">Stellar Testnet Anchor</p>
-                      <a
-                        href={`https://stellar.expert/explorer/testnet/tx/${selectedCollection.on_chain_tx_hash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 font-mono break-all"
-                      >
-                        {selectedCollection.on_chain_tx_hash.slice(0, 20)}…
-                        <ExternalLink className="w-3 h-3 shrink-0" />
-                      </a>
-                      {selectedCollection.on_chain_anchor && (
-                        <p className="text-slate-500 font-mono break-all">
-                          Hash: {selectedCollection.on_chain_anchor.slice(0, 24)}…
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Snippets in collection */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-300 mb-2">Snippets</h3>
-                    {loadingSnippets && (
-                      <p className="text-xs text-slate-500">Loading snippets…</p>
-                    )}
-                    {!loadingSnippets && collectionSnippets.length === 0 && (
-                      <p className="text-xs text-slate-500 italic">No snippets in this collection yet.</p>
-                    )}
-                    <div className="space-y-2">
+            {/* Right: selected collection snippets */}
+            <div>
+              {selectedCollection ? (
+                <Card className="bg-slate-900 border-slate-700 p-4">
+                  <h2 className="text-lg font-semibold text-slate-100 mb-3">
+                    {selectedCollection.title}
+                  </h2>
+                  {loadingSnippets ? (
+                    <p className="text-sm text-slate-500">Loading snippets…</p>
+                  ) : collectionSnippets.length === 0 ? (
+                    <p className="text-sm text-slate-500">No snippets in this collection.</p>
+                  ) : (
+                    <ul className="space-y-2">
                       {collectionSnippets.map((snippet) => (
-                        <div
+                        <li
                           key={snippet.id}
-                          className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-800 border border-slate-700"
+                          className="rounded-lg border border-slate-700 p-3 bg-slate-950/50"
                         >
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-medium text-slate-200 truncate">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-100 truncate">
                                 {snippet.title}
                               </p>
-                              {snippet.license_type && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded border border-indigo-500/30 bg-indigo-500/10 text-indigo-300">
-                                  {snippet.license_type}
-                                </span>
-                              )}
+                              <p className="text-xs text-slate-500">{snippet.language}</p>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-slate-500">
-                              <span>{snippet.language}</span>
-                              {snippet.forked_from_id && (
-                                <>
-                                  <span>&middot;</span>
-                                  <DerivationBadge forkedFromId={snippet.forked_from_id} size="sm" />
-                                </>
-                              )}
-                              {snippet.license_transaction_hash && (
-                                <>
-                                  <span>&middot;</span>
-                                  <a
-                                    href={`https://stellar.expert/explorer/testnet/tx/${snippet.license_transaction_hash}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-1 text-emerald-500/70 hover:text-emerald-400"
-                                    title="View License on Stellar"
-                                  >
-                                    <Globe className="w-3 h-3" /> Licensed on-chain
-                                  </a>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 text-xs text-slate-400 hover:text-indigo-400 px-2"
-                              onClick={() => setDetailSnippetId(snippet.id)}
-                            >
-                              <Eye className="w-3.5 h-3.5 mr-1" /> View
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 text-xs text-purple-300 hover:text-purple-200 px-2"
-                              onClick={() => handleDuplicateSnippet(snippet)}
-                              title="Duplicate snippet"
-                            >
-                              <Files className="w-3.5 h-3.5 mr-1" /> Duplicate
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 text-xs text-cyan-300 hover:text-cyan-200 px-2"
-                              onClick={() => setForkingSnippet(snippet)}
-                              title="Fork snippet"
-                            >
-                              <GitFork className="w-3.5 h-3.5 mr-1" /> Fork
-                            </Button>
-                            {walletAddress === selectedCollection.owner_wallet_address && (
+                            <div className="flex items-center gap-1">
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-6 text-xs text-slate-500 hover:text-red-400 px-2"
-                                onClick={() => handleRemoveSnippet(snippet.id)}
+                                onClick={() => setDetailSnippetId(snippet.id)}
+                                aria-label={`View ${snippet.title}`}
                               >
-                                Remove
+                                <Eye className="w-4 h-4" />
                               </Button>
-                            )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setForkingSnippet(snippet as SnippetToFork)}
+                                aria-label={`Fork ${snippet.title}`}
+                              >
+                                <GitFork className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setEmbedSnippet(snippet)}
+                                aria-label={`Embed ${snippet.title}`}
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </div>
-                        </div>
+                        </li>
                       ))}
-                    </div>
-                  </div>
-                </div>
+                    </ul>
+                  )}
+                </Card>
+              ) : (
+                <Card className="bg-slate-900 border-slate-700 p-6 text-center">
+                  <Files className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+                  <p className="text-sm text-slate-400">Select a collection to view its snippets.</p>
+                </Card>
               )}
             </div>
           </div>
         </div>
+      </main>
 
-        {/* Snippet Detail Modal */}
+      {detailSnippetId && (
         <SnippetDetailModal
           snippetId={detailSnippetId}
-          isOpen={Boolean(detailSnippetId)}
-          onClose={() => setDetailSnippetId(null)}
-          onDuplicate={() => {
-            if (selectedCollection) openCollection(selectedCollection);
-          }}
-          onFork={(snip) => {
-            setDetailSnippetId(null);
-            setForkingSnippet(snip);
+          open={Boolean(detailSnippetId)}
+          onOpenChange={(open) => {
+            if (!open) setDetailSnippetId(null);
           }}
         />
+      )}
 
-        {/* Fork Snippet Modal */}
+      {forkingSnippet && (
         <ForkSnippetModal
           snippet={forkingSnippet}
-          isOpen={Boolean(forkingSnippet)}
-          onClose={() => setForkingSnippet(null)}
-          onSuccess={() => {
-            if (selectedCollection) openCollection(selectedCollection);
+          open={Boolean(forkingSnippet)}
+          onOpenChange={(open) => {
+            if (!open) setForkingSnippet(null);
           }}
         />
-      </main>
+      )}
+
+      {embedSnippet && (
+        <EmbedSnippetModal
+          snippet={embedSNippet}
+          open={Boolean(embedSnippet)}
+          onOpenChange={(open) => {
+            if (!open) setEmbedSnippet(null);
+          }}
+        />
+      )}
     </div>
   );
 }
-

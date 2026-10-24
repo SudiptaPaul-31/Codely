@@ -136,14 +136,15 @@ describe("getActivityDescription", () => {
     });
     const desc = getActivityDescription(activity);
     expect(desc).toContain("Transferred snippet ownership from");
-    expect(desc).toContain("OLDWA...");
-    expect(desc).toContain("NEWWA...");
+    expect(desc).toContain("OLDWAL...");
+    expect(desc).toContain("NEWWAL...");
   });
 
   it("describes ownership change without previous owner", () => {
     const activity = createMockActivity({
       action: "snippet.updated",
       metadata: {
+        title: "Test Snippet",
         newOwner: "NEWWALLET12345678901234567890",
       },
     });
@@ -180,7 +181,7 @@ describe("formatWalletAddress", () => {
     const result = formatWalletAddress(
       "GBXQ234V5N3ST3LL4RW4LL3T7777777775PK2E6XN",
     );
-    expect(result).toBe("GBXQ...6XN");
+    expect(result).toBe("GBXQ23...E6XN");
   });
 
   it("returns 'Unknown user' for null", () => {
@@ -188,7 +189,7 @@ describe("formatWalletAddress", () => {
   });
 
   it("handles short wallet addresses gracefully", () => {
-    expect(formatWalletAddress("ABC")).toBe("ABC...BC");
+    expect(formatWalletAddress("ABC")).toBe("ABC");
   });
 });
 
@@ -235,7 +236,8 @@ describe("ActivityItem", () => {
   it("renders the resource ID", () => {
     const activity = createMockActivity();
     render(<ActivityItem activity={activity} />);
-    expect(screen.getByText(/res-12345/)).toBeInTheDocument();
+    // Shown shortened to its first 8 characters.
+    expect(screen.getByText("res-1234...")).toBeInTheDocument();
   });
 
   it("does not render connector when isLast is true", () => {
@@ -282,7 +284,7 @@ describe("ActivityTimeline", () => {
         createMockActivity({ id: "2" }),
       ];
       render(<ActivityTimeline activities={activities} />);
-      expect(screen.getByText(/Created snippet/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Created snippet/)).toHaveLength(2);
     });
 
     it("does not fetch from API in controlled mode", () => {

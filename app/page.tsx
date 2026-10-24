@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
@@ -15,9 +17,17 @@ import {
   Check,
   Star,
   Sparkles,
+  Copy,
+  CheckCircle2,
+  X,
 } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { WalletButton } from "@/components/WalletConnect";
+
+const EmbedSnippetModal = dynamic(
+  () => import("@/components/EmbedGeneratorModal"),
+  { ssr: false }
+);
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -105,6 +115,8 @@ const STATS = [
   { value: "100%", label: "Private by default", color: "text-sky-600" },
 ];
 
+type EmbedTheme = "light" | "dark" | "system";
+
 // ─── Code preview mock ────────────────────────────────────────────────────────
 
 const CODE_LINES = [
@@ -120,6 +132,8 @@ const CODE_LINES = [
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function LandingPage() {
+  const [embedOpen, setEmbedOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-white text-slate-900">
 
@@ -179,6 +193,15 @@ export default function LandingPage() {
                     How It Works
                   </Button>
                 </Link>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => setEmbedOpen(true)}
+                  className="w-full sm:w-auto border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-indigo-300 hover:text-indigo-600 rounded-full px-8 font-semibold transition-all duration-200"
+                >
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Embed Snippet
+                </Button>
                 <WalletButton />
               </div>
 
@@ -473,6 +496,10 @@ export default function LandingPage() {
       </section>
 
       </main>
+
+      {embedOpen && (
+        <EmbedSnippetModal onClose={() => setEmbedOpen(false)} />
+      )}
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <footer className="border-t border-slate-100 bg-white">

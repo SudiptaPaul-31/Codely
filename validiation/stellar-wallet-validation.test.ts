@@ -1,8 +1,9 @@
 import { validateStellarAddress, isValidStellarAddress } from '../lib/stellar-wallet-validation';
 
 describe('Stellar Wallet Validation', () => {
-  const validAddress = 'GB3T5Y73X7P54R3F2R2L63K3627HXYF475V5RKTF5ZQ22J4LZRVKZ2B5';
-  const invalidAddress = 'GB3T5Y73X7P54R3F2R2L63K3627HXYF475V5RKTF5ZQ22J4LZRVKZ2B'; // Too short
+  // A real public key (valid checksum), derived from a fixed test seed.
+  const validAddress = 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57';
+  const invalidAddress = 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA5'; // Too short
   const malformedAddress = 'invalid-address';
   const secretKey = 'SA3T5Y73X7P54R3F2R2L63K3627HXYF475V5RKTF5ZQ22J4LZRVKZ2B5'; // Starting with S
   

@@ -176,7 +176,9 @@ export class SnippetService {
       let snippet = await this.snippetRepository.create({
         ...validatedData,
         ipfsCid,
-        id: requestedProof?.snippetId,
+        // Only pin the id when an ownership proof names one; otherwise the
+        // repository generates it.
+        ...(requestedProof?.snippetId ? { id: requestedProof.snippetId } : {}),
       });
 
       if (validatedData.visibility === "shared" && validatedData.sharedWith?.length) {
@@ -344,7 +346,7 @@ export class SnippetService {
   async duplicateSnippet(
     snippetId: string,
     userWalletAddress: string,
-    titleOverride?: string,
+    data?: unknown,
   ) {
     try {
       const original = await this.snippetRepository.findById(snippetId);
@@ -352,7 +354,12 @@ export class SnippetService {
         throw new Error("Snippet not found");
       }
 
-      const title = titleOverride?.trim() || `${original.title} (Copy)`;
+      // The duplicate route passes the request body ({ title?, ownerWalletAddress? }).
+      // It used to be read as a bare title string, so `.trim()` on the object
+      // threw and every duplicate request failed with a 500.
+      const { duplicateSnippetSchema } = await import("./snippet.validator");
+      const overrides = data === undefined || data === null ? {} : duplicateSnippetSchema.parse(data);
+      const title = overrides.title?.trim() || `${original.title} (Copy)`;
       const tags = Array.isArray(original.tags)
         ? original.tags
         : (typeof original.tags === "string" ? JSON.parse(original.tags) : []);
@@ -390,6 +397,10 @@ export class SnippetService {
       return duplicate;
     } catch (error) {
       if (error instanceof Error && error.message === "Snippet not found") {
+        throw error;
+      }
+      // Let the route answer 400 for a bad body instead of a generic failure.
+      if (error instanceof Error && error.name === "ZodError") {
         throw error;
       }
       console.error("[Service] Error duplicating snippet:", error);

@@ -52,18 +52,18 @@ describe("Visibility validation", () => {
   it("accepts all three visibility values", () => {
     expect(VISIBILITY_VALUES).toEqual(["private", "public", "shared"]);
     for (const v of VISIBILITY_VALUES) {
-      expect(createSnippetSchema.parse({ title: "t", description: "d", code: "c", language: "js", tags: ["x"], ownerWalletAddress: OWNER, visibility: v }).visibility).toBe(v);
+      expect(createSnippetSchema.parse({ title: "Test snippet", description: "d", code: "c", language: "javascript", tags: ["x"], ownerWalletAddress: OWNER, visibility: v }).visibility).toBe(v);
     }
   });
 
   it("defaults to private when visibility is omitted", () => {
-    const parsed = createSnippetSchema.parse({ title: "t", description: "d", code: "c", language: "js", tags: ["x"], ownerWalletAddress: OWNER });
+    const parsed = createSnippetSchema.parse({ title: "Test snippet", description: "d", code: "c", language: "javascript", tags: ["x"], ownerWalletAddress: OWNER });
     expect(parsed.visibility).toBe("private");
   });
 
   it("rejects an unknown visibility value", () => {
     expect(() =>
-      createSnippetSchema.parse({ title: "t", description: "d", code: "c", language: "js", tags: ["x"], ownerWalletAddress: OWNER, visibility: "secret" }),
+      createSnippetSchema.parse({ title: "Test snippet", description: "d", code: "c", language: "javascript", tags: ["x"], ownerWalletAddress: OWNER, visibility: "secret" }),
     ).toThrow();
   });
 
@@ -83,7 +83,7 @@ describe("SnippetService.setVisibility", () => {
   });
 
   it("changes visibility to private and logs the change", async () => {
-    const existing = { id: "s1", owner_wallet_address: OWNER, visibility: "private" };
+    const existing = { id: "s1", owner_wallet_address: OWNER, visibility: "public" };
     (mockRepository.findById as jest.Mock).mockResolvedValue(existing);
     (mockRepository.update as jest.Mock).mockResolvedValue({ ...existing, visibility: "private" });
 
@@ -166,7 +166,7 @@ describe("SnippetService.createSnippet with visibility", () => {
     );
 
     const result = await service.createSnippet({
-      title: "t", description: "d", code: "c", language: "js", tags: ["x"],
+      title: "Test snippet", description: "d", code: "c", language: "javascript", tags: ["x"],
       ownerWalletAddress: OWNER, visibility: "private",
     });
 
@@ -182,7 +182,7 @@ describe("SnippetService.createSnippet with visibility", () => {
     );
 
     await service.createSnippet({
-      title: "t", description: "d", code: "c", language: "js", tags: ["x"],
+      title: "Test snippet", description: "d", code: "c", language: "javascript", tags: ["x"],
       ownerWalletAddress: OWNER, visibility: "shared", sharedWith: [OTHER],
     });
 
@@ -195,7 +195,7 @@ describe("SnippetService.createSnippet with visibility", () => {
     );
 
     await service.createSnippet({
-      title: "t", description: "d", code: "c", language: "js", tags: ["x"],
+      title: "Test snippet", description: "d", code: "c", language: "javascript", tags: ["x"],
       ownerWalletAddress: OWNER, visibility: "shared",
     });
 

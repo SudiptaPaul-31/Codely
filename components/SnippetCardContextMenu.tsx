@@ -1,5 +1,4 @@
-// No changes made to this file as it is not related to the dashboard sorting and view preferences issue. The issue requires modifications to the dashboard components that render the snippet list, not the context menu component itself.
-" use client";
+"use client";
 
 import React from "react";
 import {
@@ -46,16 +45,19 @@ export function SnippetCardContextMenu({
           {children}
 
           {showDropdownButton && (
-            <div <div className="absolute top-2 right-2 opacity-0 group-hover/context:opacity-100 transition-opacity z10" onClick=// e => e.stopPropagation()}>
+            <div
+              className="absolute top-2 right-2 opacity-0 group-hover/context:opacity-100 transition-opacity z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7 text-slate-400 hover-text-white bg-slate-900/80 hover-bg-slate-800 backdrop-blur-md rounded-md"
+                    className="h-7 w-7 text-slate-400 hover:text-white bg-slate-900/80 hover:bg-slate-800 backdrop-blur-md rounded-md"
                   >
                     <MoreVertical className="h-4 w-4" />
-                    <span className="s-roonly">Actions</span>
+                    <span className="sr-only">Actions</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44 bg-slate-950/95 border-purple-500/30">
@@ -97,7 +99,7 @@ export function SnippetCardContextMenu({
                         <span>Copy Code</span>
                       </DropdownMenuItem>
                     </>
-                 )}
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

@@ -1,3 +1,6 @@
+/**
+ * @jest-environment node
+ */
 import { GET } from "./[walletAddress]/route";
 import * as reputationService from "@/lib/reputation";
 

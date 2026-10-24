@@ -7,6 +7,28 @@ import { render, screen, waitFor, act, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom";
 import SnippetForm from "../SnippetForm";
 
+// The usage-instructions panel loads its own data and has its own tests.
+jest.mock("@/components/UsageInstructionsPanel", () => ({
+  __esModule: true,
+  default: () => null,
+  UsageInstructionsPanel: () => null,
+  UsageInstructionsFormSection: () => null,
+}));
+
+// jsdom does not implement the browser APIs Radix UI relies on.
+if (!("ResizeObserver" in global)) {
+  (global as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
+// SnippetForm reads the connected wallet; these tests run without a provider.
+jest.mock("@/wallet/context/WalletContext", () => ({
+  useWallet: () => ({ connected: false, publicKey: null, walletProvider: null, token: null }),
+}));
+
 // Mock sonner toast
 jest.mock("sonner", () => ({
   toast: {

@@ -92,7 +92,12 @@ export class SignatureMiddleware {
 
       try {
         const keypair = StellarSdk.Keypair.fromPublicKey(walletAddress);
-        isValidSignature = keypair.verify(messageToVerify, signature, "utf8");
+        // Keypair.verify takes the raw bytes of both the message and the
+        // signature; the client sends the signature base64-encoded.
+        isValidSignature = keypair.verify(
+          Buffer.from(messageToVerify, "utf8"),
+          Buffer.from(signature, "base64"),
+        );
       } catch (err) {
         console.error("[SignatureMiddleware] Keypair verification error:", err);
       }

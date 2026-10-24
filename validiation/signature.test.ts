@@ -1,3 +1,6 @@
+/**
+ * @jest-environment node
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { SignatureMiddleware } from "../app/api/snippets/signature.middleware";
 import * as StellarSdk from "stellar-sdk";

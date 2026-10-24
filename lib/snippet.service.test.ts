@@ -9,6 +9,10 @@ jest.mock("@/lib/ipfs.service", () => ({
   },
 }));
 
+jest.mock("@/lib/activity-logger", () => ({
+  appendActivityLog: jest.fn().mockResolvedValue(undefined),
+}));
+
 // Mock the repository
 const mockRepository = {
   findAll: jest.fn(),
@@ -230,120 +234,109 @@ describe("SnippetService", () => {
     });
   });
 
-  describe("duplicateSnippet", () => {
-    it("should duplicate snippet with identical metadata and new ID", async () => {
-      const original = {
-        id: "orig-123",
-        title: "My React Hook",
-        description: "Custom hook",
-        code: "const useData = () => {}",
-        language: "typescript",
-        tags: ["react", "hooks"],
-        owner_wallet_address: "G_ORIGINAL",
-      };
-      const duplicated = {
-        id: "dup-456",
-        title: "My React Hook",
-        description: "Custom hook",
-        code: "const useData = () => {}",
-        language: "typescript",
-        tags: ["react", "hooks"],
-        owner_wallet_address: OTHER_WALLET,
-        original_snippet_id: "orig-123",
-      };
+  // Duplicates and forks are written with repository.create() and linked to
+  // their source through forked_from_id (the column scripts/init-db.sql defines).
+  const original = {
+    id: "orig-123",
+    title: "Original Algorithm",
+    description: "Original description",
+    code: "function solve() {}",
+    language: "javascript",
+    tags: ["algorithm"],
+    owner_wallet_address: "G_ORIGINAL",
+    ipfs_cid: "QmOriginal",
+  };
+  const echoCreate = () =>
+    (mockRepository.create as jest.Mock).mockImplementation(async (data) => ({
+      id: "new-456",
+      ...data,
+      owner_wallet_address: data.ownerWalletAddress,
+      forked_from_id: data.forkedFromId,
+      is_fork: data.isFork,
+    }));
 
+  describe("duplicateSnippet", () => {
+    it("copies the snippet into the requester's collection, linked to its source", async () => {
       (mockRepository.findById as jest.Mock).mockResolvedValue(original);
-      (mockRepository.duplicateSnippet as jest.Mock).mockResolvedValue(duplicated);
+      echoCreate();
 
       const result = await service.duplicateSnippet("orig-123", OTHER_WALLET);
-      expect(result).toEqual(duplicated);
-      expect(mockRepository.duplicateSnippet).toHaveBeenCalledWith(
-        "orig-123",
-        OTHER_WALLET,
-        undefined,
+
+      expect(mockRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Original Algorithm (Copy)",
+          description: "Original description",
+          code: "function solve() {}",
+          language: "javascript",
+          tags: ["algorithm"],
+          ownerWalletAddress: OTHER_WALLET,
+          forkedFromId: "orig-123",
+          isFork: false,
+        }),
       );
+      expect(result.id).not.toBe("orig-123");
+      expect(result.forked_from_id).toBe("orig-123");
+    });
+
+    it("takes a title override from the request body", async () => {
+      (mockRepository.findById as jest.Mock).mockResolvedValue(original);
+      echoCreate();
+
+      const result = await service.duplicateSnippet("orig-123", OTHER_WALLET, {
+        title: "My Copy",
+        ownerWalletAddress: OTHER_WALLET,
+      });
+
+      expect(result.title).toBe("My Copy");
+    });
+
+    it("rejects an invalid body with a ZodError", async () => {
+      (mockRepository.findById as jest.Mock).mockResolvedValue(original);
+      await expect(
+        service.duplicateSnippet("orig-123", OTHER_WALLET, { title: "" }),
+      ).rejects.toThrow(ZodError);
+      expect(mockRepository.create).not.toHaveBeenCalled();
     });
 
     it("should throw error if original snippet not found on duplicate", async () => {
       (mockRepository.findById as jest.Mock).mockResolvedValue(null);
       await expect(service.duplicateSnippet("invalid-id", OTHER_WALLET)).rejects.toThrow(
-        "Source snippet not found",
+        "Snippet not found",
       );
     });
   });
 
   describe("forkSnippet", () => {
     it("should create forked snippet with derivation link and customizable content", async () => {
-      const original = {
-        id: "orig-123",
-        title: "Original Algorithm",
-        description: "Original description",
-        code: "function solve() {}",
-        language: "javascript",
-        tags: ["algorithm"],
-        owner_wallet_address: "G_ORIGINAL",
-      };
-
-      const forkOverrides = {
-        title: "Customized Fork",
-        code: "function solveOptimized() {}",
-      };
-
-      const forked = {
-        id: "fork-789",
-        title: "Customized Fork",
-        description: "Original description",
-        code: "function solveOptimized() {}",
-        language: "javascript",
-        tags: ["algorithm"],
-        owner_wallet_address: OTHER_WALLET,
-        original_snippet_id: "orig-123",
-      };
-
       (mockRepository.findById as jest.Mock).mockResolvedValue(original);
-      (mockRepository.forkSnippet as jest.Mock).mockResolvedValue(forked);
+      echoCreate();
 
-      const result = await service.forkSnippet("orig-123", OTHER_WALLET, forkOverrides);
-      expect(result).toEqual(forked);
-      expect(mockRepository.forkSnippet).toHaveBeenCalledWith(
-        "orig-123",
-        OTHER_WALLET,
-        expect.objectContaining({ title: "Customized Fork", code: "function solveOptimized() {}" }),
+      const result = await service.forkSnippet("orig-123", OTHER_WALLET, {
+        title: "Customized Fork",
+        code: "function solveOptimized() {}",
+      });
+
+      expect(mockRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Customized Fork",
+          code: "function solveOptimized() {}",
+          description: "Original description",
+          ownerWalletAddress: OTHER_WALLET,
+          forkedFromId: "orig-123",
+          isFork: true,
+        }),
       );
+      expect(result.title).toBe("Customized Fork");
+      expect(result.is_fork).toBe(true);
     });
 
-    it("should fallback to '[Title] (fork)' when no title override is passed", async () => {
-      const original = {
-        id: "orig-123",
-        title: "Original Algorithm",
-        description: "Original description",
-        code: "function solve() {}",
-        language: "javascript",
-        tags: ["algorithm"],
-        owner_wallet_address: "G_ORIGINAL",
-      };
-
-      const forked = {
-        id: "fork-789",
-        title: "Original Algorithm (fork)",
-        description: "Original description",
-        code: "function solve() {}",
-        language: "javascript",
-        tags: ["algorithm"],
-        owner_wallet_address: OTHER_WALLET,
-        original_snippet_id: "orig-123",
-      };
-
+    it("falls back to 'Fork of [Title]' when no title override is passed", async () => {
       (mockRepository.findById as jest.Mock).mockResolvedValue(original);
-      (mockRepository.forkSnippet as jest.Mock).mockResolvedValue(forked);
+      echoCreate();
 
       const result = await service.forkSnippet("orig-123", OTHER_WALLET, {});
-      expect(result.title).toBe("Original Algorithm (fork)");
-      expect(mockRepository.forkSnippet).toHaveBeenCalledWith(
-        "orig-123",
-        OTHER_WALLET,
-        expect.objectContaining({}),
-      );
+      expect(result.title).toBe("Fork of Original Algorithm");
+      expect(result.code).toBe("function solve() {}");
     });
   });
 

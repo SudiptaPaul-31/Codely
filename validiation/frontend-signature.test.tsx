@@ -2,9 +2,19 @@
  * @jest-environment jsdom
  */
 
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { WalletProvider, useWallet } from '../components/WalletConnect';
 import React from 'react';
+
+// The provider restores a session from encrypted storage (not plain
+// localStorage keys); stand in a stored Freighter session for the "connected"
+// case. readSession returns null unless a test sets one.
+const mockSession: { current: unknown } = { current: null };
+jest.mock('@/wallet/lib/sessionStorage', () => ({
+  readSession: jest.fn(async () => mockSession.current),
+  persistSession: jest.fn(async () => undefined),
+  clearSession: jest.fn(),
+}));
 
 // Mock the crypto API for randomUUID
 Object.defineProperty(global, 'crypto', {
@@ -34,6 +44,7 @@ describe('WalletConnect signAction', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+    mockSession.current = null;
   });
 
   it('should throw an error if wallet is not connected', async () => {
@@ -46,18 +57,19 @@ describe('WalletConnect signAction', () => {
     // 1. Setup mock signature
     mockSignMessage.mockResolvedValue('base64-test-signature');
 
-    // 2. Pre-authenticate the wallet in localStorage so it initializes as connected
-    localStorage.setItem('authToken', 'test-token');
-    localStorage.setItem('walletAddress', 'GABCDEFGHIJKLMNOPQRSTUVWXYZ');
-    localStorage.setItem('walletName', 'freighter');
+    // 2. A stored session, so the provider reconnects on mount
+    mockSession.current = {
+      publicKey: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      walletName: 'Freighter',
+      walletProvider: 'freighter',
+      token: 'test-token',
+      expiresAt: Date.now() + 60_000,
+    };
 
     const { result } = renderHook(() => useWallet(), { wrapper: WalletProvider });
 
-    // Wait for the context to initialize from localStorage
-    await act(async () => {
-      // simulate a small delay if needed
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+    // Wait for the provider to verify and restore the session
+    await waitFor(() => expect(result.current.connected).toBe(true));
 
     // 3. Call signAction
     const actionResult = await result.current.signAction('delete_snippet', '123');

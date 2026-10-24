@@ -124,6 +124,8 @@ export function getActivityStyle(action: string) {
 
 export function formatWalletAddress(wallet: string | null): string {
   if (!wallet) return "Unknown user";
+  // Nothing to shorten: "ABC" would otherwise render as "ABC...ABC".
+  if (wallet.length <= 10) return wallet;
   return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
 }
 

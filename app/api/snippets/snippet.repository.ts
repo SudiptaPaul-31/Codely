@@ -372,6 +372,23 @@ export class SnippetRepository {
   }
 
   /**
+   * Replace a snippet's usage instructions, or clear them with `null`.
+   *
+   * A direct SET, not the COALESCE pattern `update` uses: `update` cannot
+   * clear a column, and deleting documentation has to. Deliberately leaves
+   * `updated_at` alone; see scripts/migrations/005_add_snippet_usage_instructions.sql.
+   */
+  async setUsageInstructions(id: string, usage: Record<string, unknown> | null) {
+    const result = await this.sql`
+      UPDATE snippets
+      SET usage_instructions = ${usage === null ? null : JSON.stringify(usage)}::jsonb
+      WHERE id = ${id} AND is_deleted = false
+      RETURNING id, usage_instructions
+    `;
+    return (result[0] as { id: string; usage_instructions: unknown } | undefined) ?? null;
+  }
+
+  /**
    * Find all snippets forked/derived from a specific snippet ID
    */
   async findForksBySnippetId(snippetId: string) {

@@ -71,6 +71,8 @@ export interface Snippet {
   license_metadata?: any;
   ipfs_cid?: string | null;
   visibility?: "private" | "public" | "shared";
+  /** Author-written documentation; see lib/usage-instructions.ts. */
+  usage_instructions?: import("@/lib/usage-instructions").UsageInstructions | null;
   created_at: string;
   updated_at: string;
 }
