@@ -3,16 +3,19 @@
   "branches": [
     "main",
     "origin",
+    "security/issue-220-implement-stellar-transaction-fee-estimation",
     "security/issue-213-create-snippet-embed-code-generator"
   ],
   "parent": {
     "main": null,
     "origin": "main",
+    "security/issue-220-implement-stellar-transaction-fee-estimation": "main",
     "security/issue-213-create-snippet-embed-code-generator": "main"
   },
   "order": [
     "main",
     "origin",
+    "security/issue-220-implement-stellar-transaction-fee-estimation",
     "security/issue-213-create-snippet-embed-code-generator"
   ]
 }

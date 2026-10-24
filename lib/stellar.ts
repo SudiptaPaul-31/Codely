@@ -2,6 +2,7 @@
 import crypto from "crypto";
 
 import * as StellarSdk from "stellar-sdk";
+import { StrKey } from "stellar-sdk";
 import {
   StellarTransactionConfirmationService,
 } from "@/lib/transaction-confirmation.service";
@@ -25,6 +26,289 @@ const NETWORK_PASSPHRASE =
   STELLAR_NETWORK === "mainnet"
     ? StellarSdk.Networks.PUBLIC
     : StellarSdk.Networks.TESTNET;
+
+// ─── Fee Estimation ────────────────────────────────────────────────────────
+
+export type FeeStatus =
+  | "estimating"
+  | "estimated"
+  | "updated"
+  | "insufficient_balance"
+  | "unable_to_estimate"
+  | "ready_for_submission";
+
+export interface FeeEstimate {
+  estimatedFee: string;
+  asset: string;
+  network: string;
+  feeStatus: FeeStatus;
+  estimatedAt: string;
+  balanceSufficient: boolean;
+  /** Total required = transaction amount + estimated fee, in stroops (string). */
+  totalRequired?: string;
+  /** Available balance in stroops (string), when known. */
+  availableBalance?: string;
+  /** Base fee per operation (stroops) used for the estimate. */
+  baseFee?: string;
+  /** Number of operations included in the estimate. */
+  operationCount?: number;
+  /** Error message when feeStatus is "unable_to_estimate". */
+  error?: string;
+  /** Whether the estimate came from cache. */
+  cached?: boolean;
+}
+
+/** Wire-format response shape returned by /api/stellar/estimate-fee. */
+export interface FeeEstimateResponse {
+  estimatedFee: string;
+  asset: string;
+  network: string;
+  feeStatus: FeeStatus;
+  estimatedAt: string;
+  balanceSufficient: boolean;
+  totalRequired?: string;
+  availableBalance?: string;
+}
+
+export interface FeeEstimateOptions {
+  /** Wallet address whose balance should be validated. */
+  walletAddress?: string;
+  /** Transaction amount in stroops (string or number). */
+  amount?: string | number;
+  /** Number of operations in the transaction (default 1). */
+  operationCount?: number;
+  /** Override the network (defaults to configured network). */
+  network?: string;
+  /** Skip balance validation (useful for pure fee lookups). */
+  skipBalanceCheck?: boolean;
+  /** Bypass the cache and force a fresh Horizon lookup. */
+  forceRefresh?: boolean;
+}
+
+export interface FeeValidationResult {
+  valid: boolean;
+  feeStatus: FeeStatus;
+  estimate?: FeeEstimate;
+  error?: string;
+  /** True when the fee changed materially since the prior estimate. */
+  feeChanged?: boolean;
+  previousFee?: string;
+  currentFee?: string;
+  requiresReapproval?: boolean;
+}
+
+const STROOPS_PER_XLM = 10_000_000n;
+const FEE_CACHE_TTL_MS = 30_000;
+const FEE_CHANGE_THRESHOLD_STROOPS = 1n;
+
+interface FeeCacheEntry {
+  baseFee: string;
+  fetchedAt: number;
+}
+
+const feeCache = new Map<string, FeeCacheEntry>();
+
+function getHorizonUrlForNetwork(network: string): string {
+  return network === "mainnet"
+    ? "https://horizon.stellar.org"
+    : "https://horizon-testnet.stellar.org";
+}
+
+function getNetworkPassphraseForNetwork(network: string): string {
+  return network === "mainnet"
+    ? StellarSdk.Networks.PUBLIC
+    : StellarSdk.Networks.TESTNET;
+}
+
+function stroopsToXlm(stroops: bigint): string {
+  const whole = stroops / STROOPS_PER_XLM;
+  const frac = stroops % STROOPS_PER_XLM;
+  const fracStr = frac.toString().padStart(7, "0").replace(/0+$/, "");
+  return fracStr.length > 0 ? `${whole}.${fracStr}` : `${whole}`;
+}
+
+function toStroops(value: string | number | bigint | undefined | null): bigint {
+  if (value === undefined || value === null) return 0n;
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return 0n;
+    return BigInt(Math.round(value));
+  }
+  const trimmed = value.trim();
+  if (trimmed === "") return 0n;
+  if (/^-?\d+$/.test(trimmed)) return BigInt(trimmed);
+  // Treat as XLM decimal
+  const [whole, frac = ""] = trimmed.split(".");
+  const fracPadded = (frac + "0000000").slice(0, 7);
+  return BigInt(whole || "0") * STROOPS_PER_XLM + BigInt(fracPadded || "0");
+}
+
+/**
+ * Fetch the current network base fee (in stroops) from Horizon.
+ * Results are cached briefly to keep repeated estimation calls idempotent
+ * and to tolerate transient Horizon interruptions.
+ */
+export async function getNetworkBaseFee(
+  network: string = STELLAR_NETWORK,
+  forceRefresh = false,
+): Promise<{ baseFee: string; cached: boolean }> {
+  const now = Date.now();
+  const cached = feeCache.get(network);
+  if (!forceRefresh && cached && now - cached.fetchedAt < FEE_CACHE_TTL_MS) {
+    return { baseFee: cached.baseFee, cached: true };
+  }
+
+  const server = new StellarSdk.Horizon.Server(getHorizonUrlForNetwork(network));
+  const response = await server.feeStats();
+  const baseFee = String(response.last_ledger_base_fee ?? StellarSdk.BASE_FEE);
+
+  feeCache.set(network, { baseFee, fetchedAt: now });
+  return { baseFee, cached: false };
+}
+
+/**
+ * Estimate the fee for a Stellar transaction and (optionally) validate
+ * that the sender wallet has sufficient balance to cover amount + fee.
+ *
+ * This utility is reusable across all Stellar transaction workflows
+ * (wallet ops, escrow, milestones, refunds, disputes, ownership proofs,
+ * snippet attestations).
+ */
+export async function estimateStellarFee(
+  options: FeeEstimateOptions = {},
+): Promise<FeeEstimate> {
+  const network = options.network || STELLAR_NETWORK;
+  const operationCount = Math.max(1, options.operationCount ?? 1);
+  const estimatedAt = new Date().toISOString();
+
+  let baseFee: string;
+  let cached = false;
+  try {
+    const result = await getNetworkBaseFee(network, options.forceRefresh);
+    baseFee = result.baseFee;
+    cached = result.cached;
+  } catch (error: any) {
+    return {
+      estimatedFee: "0",
+      asset: "XLM",
+      network,
+      feeStatus: "unable_to_estimate",
+      estimatedAt,
+      balanceSufficient: false,
+      error: `Unable to retrieve network fees: ${error?.message ?? "unknown error"}`,
+    };
+  }
+
+  const baseFeeStroops = toStroops(baseFee);
+  const totalFeeStroops = baseFeeStroops * BigInt(operationCount);
+  const amountStroops = toStroops(options.amount);
+  const totalRequiredStroops = amountStroops + totalFeeStroops;
+
+  let balanceSufficient = true;
+  let availableBalance: string | undefined;
+
+  if (!options.skipBalanceCheck && options.walletAddress) {
+    try {
+      const server = new StellarSdk.Horizon.Server(getHorizonUrlForNetwork(network));
+      const account = await server.loadAccount(options.walletAddress);
+      const native = account.balances.find((b: any) => b.asset_type === "native");
+      const availableStroops = toStroops(native?.balance ?? "0");
+      availableBalance = availableStroops.toString();
+      balanceSufficient = availableStroops >= totalRequiredStroops;
+    } catch (error: any) {
+      return {
+        estimatedFee: stroopsToXlm(totalFeeStroops),
+        asset: "XLM",
+        network,
+        feeStatus: "unable_to_estimate",
+        estimatedAt,
+        balanceSufficient: false,
+        baseFee,
+        operationCount,
+        cached,
+        error: `Unable to load wallet balance: ${error?.message ?? "unknown error"}`,
+      };
+    }
+  }
+
+  return {
+    estimatedFee: stroopsToXlm(totalFeeStroops),
+    asset: "XLM",
+    network,
+    feeStatus: balanceSufficient ? "estimated" : "insufficient_balance",
+    estimatedAt,
+    balanceSufficient,
+    totalRequired: totalRequiredStroops.toString(),
+    availableBalance,
+    baseFee,
+    operationCount,
+    cached,
+  };
+}
+
+/**
+ * Revalidate a previously produced fee estimate immediately before
+ * signing/submission. Detects material fee changes and insufficient
+ * balances, and signals whether the user must re-approve.
+ */
+export async function validateFeeBeforeSubmission(
+  previousEstimate: FeeEstimate | undefined,
+  options: FeeEstimateOptions = {},
+): Promise<FeeValidationResult> {
+  const current = await estimateStellarFee({ ...options, forceRefresh: true });
+
+  if (current.feeStatus === "unable_to_estimate") {
+    return {
+      valid: false,
+      feeStatus: current.feeStatus,
+      estimate: current,
+      error: current.error,
+    };
+  }
+
+  if (!current.balanceSufficient) {
+    return {
+      valid: false,
+      feeStatus: "insufficient_balance",
+      estimate: current,
+      error: "Insufficient balance to cover transaction amount and network fee.",
+    };
+  }
+
+  if (previousEstimate) {
+    const prevStroops = toStroops(previousEstimate.estimatedFee);
+    const currStroops = toStroops(current.estimatedFee);
+    const diff = currStroops > prevStroops
+      ? currStroops - prevStroops
+      : prevStroops - currStroops;
+
+    if (diff >= FEE_CHANGE_THRESHOLD_STROOPS) {
+      return {
+        valid: true,
+        feeStatus: "updated",
+        estimate: { ...current, feeStatus: "updated" },
+        feeChanged: true,
+        previousFee: previousEstimate.estimatedFee,
+        currentFee: current.estimatedFee,
+        requiresReapproval: true,
+      };
+    }
+  }
+
+  return {
+    valid: true,
+    feeStatus: "ready_for_submission",
+    estimate: { ...current, feeStatus: "ready_for_submission" },
+  };
+}
+
+/**
+ * Clear the in-memory fee cache. Useful for tests and for forcing a
+ * fresh lookup after a known network event.
+ */
+export function clearFeeCache(): void {
+  feeCache.clear();
+}
 
 export interface StellarSubmitResult {
   success: boolean;
