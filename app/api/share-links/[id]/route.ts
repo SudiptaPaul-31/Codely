@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OwnershipMiddleware } from "@/app/api/snippets/ownership.middleware";
 import { shareLinkManagementService } from "@/lib/share-link-management.service";
+import { authorizeSnippet } from "../route";
 
 /**
  * DELETE /api/share-links/:id
@@ -13,6 +14,12 @@ export async function DELETE(
   try {
     const { id } = await params;
     const walletAddress = await OwnershipMiddleware.extractWalletAddress(req);
+    const existing = await shareLinkManagementService.findShareLink(id);
+    if (!existing) {
+      return NextResponse.json({ success: false, error: "Share link not found" }, { status: 404 });
+    }
+    const ownershipResponse = await authorizeSnippet(existing.snippetId, walletAddress);
+    if (ownershipResponse) return ownershipResponse;
 
     const link = await shareLinkManagementService.revokeShareLink(
       id,
