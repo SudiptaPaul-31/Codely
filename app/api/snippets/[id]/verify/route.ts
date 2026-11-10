@@ -1,26 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  getSnippetWithHash,
-  verifySnippetIntegrity,
-} from "@/lib/db";
-import { generateSnippetHash } from "@/lib/hash";
-import { StellarRecoveryService } from "@/lib/stellar-recovery.service";
+  snippetAttestationService,
+  SnippetAttestationAuthError,
+  SnippetAttestationValidationError,
+} from "@/lib/snippet-attestation-service";
 
-const recoveryService = new StellarRecoveryService();
+/**
+ * GET /api/snippets/[id]/verify
+ * Verify whether the current snippet content matches the attested hash and on-chain Stellar transaction.
+ */
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await params;
+    const url = new URL(req.url);
+    const attestationId = url.searchParams.get("attestationId") || undefined;
+    const actorWallet = req.headers.get("x-wallet-address") || null;
 
-function buildIdempotencyKey(snippetId: string, contentHash: string): string {
-  return `hash:${snippetId.slice(0, 8)}:${contentHash.slice(0, 16)}`;
+    const outcome = await snippetAttestationService.verifySnippetAttestation(
+      id,
+      {
+        attestationId,
+        actorWallet,
+      },
+    );
+
+    return NextResponse.json(outcome, { status: 200 });
+  } catch (error) {
+    if (error instanceof SnippetAttestationValidationError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.statusCode },
+      );
+    }
+    return NextResponse.json(
+      { error: "Failed to verify snippet attestation." },
+      { status: 500 },
+    );
+  }
 }
 
 /**
  * POST /api/snippets/[id]/verify
- *
- * Anchors the snippet's creation timestamp + content hash on the Stellar
- * blockchain, providing immutable proof-of-existence.
- *
- * Uses the recovery service for retry-safe processing. If the Stellar
- * submission fails with a retryable error, the transaction is queued
- * for automatic retry via the cron-based recovery engine.
+ * Create or verify a snippet attestation.
  */
 export async function POST(
   req: NextRequest,
@@ -28,197 +52,46 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-
-    const snippet = await getSnippetWithHash(id);
-    if (!snippet) {
-      return NextResponse.json({ error: "Snippet not found" }, { status: 404 });
+    let body: Record<string, any> = {};
+    try {
+      body = (await req.json()) || {};
+    } catch {
+      body = {};
     }
 
-    if (snippet.on_chain_hash) {
-      return NextResponse.json(
-        {
-          error:
-            "Snippet is already verified on-chain. Timestamps are immutable.",
-          data: {
-            snippetId: id,
-            onChainHash: snippet.on_chain_hash,
-            transactionHash: snippet.transaction_hash,
-            verifiedAt: snippet.verified_at,
-            createdAt: snippet.created_at,
-          },
-        },
-        { status: 409 },
-      );
-    }
+    const actorWallet =
+      body.attestedBy ||
+      body.walletAddress ||
+      req.headers.get("x-wallet-address") ||
+      "";
 
-    const onChainHash = generateSnippetHash(
-      snippet.title,
-      snippet.description || "",
-      snippet.code,
-      snippet.language,
-      snippet.tags || [],
-    );
-
-    const createdAt: string =
-      snippet.created_at instanceof Date
-        ? snippet.created_at.toISOString()
-        : String(snippet.created_at);
-
-    console.log("[verify] Anchoring snippet on Stellar:", {
-      id,
-      onChainHash,
-      createdAt,
-    });
-
-    const idempotencyKey = buildIdempotencyKey(id, onChainHash);
-
-    const existing = await recoveryService.getStatusByKey(idempotencyKey);
-    if (existing && existing.status === "confirmed" && existing.callback_status === "applied") {
-      return NextResponse.json({
-        success: true,
-        message: "Snippet already anchored on Stellar blockchain",
-        data: {
-          snippetId: id,
-          onChainHash,
-          transactionHash: existing.stellar_tx_hash,
-          verifiedAt: snippet.verified_at || new Date().toISOString(),
-          createdAt,
-        },
-      });
-    }
-
-    if (existing && existing.status === "dead") {
-      return NextResponse.json(
-        {
-          error: "Stellar anchoring failed permanently",
-          details: existing.last_error,
-        },
-        { status: 502 },
-      );
-    }
-
-    if (existing && (existing.status === "pending" || existing.status === "submitted" || existing.status === "failed")) {
-      return NextResponse.json(
-        {
-          status: "recovering",
-          idempotencyKey,
-          transactionId: existing.id,
-          stellarTxHash: existing.stellar_tx_hash,
-          message: "Anchoring transaction is being processed. Poll /transaction-status for updates.",
-        },
-        { status: 202 },
-      );
-    }
-
-    const record = await recoveryService.submitHashAnchoring({
-      idempotencyKey,
+    const attestation = await snippetAttestationService.createAttestation({
       snippetId: id,
-      contentHash: onChainHash,
-      createdAt,
+      code: body.code,
+      attestedBy: actorWallet,
+      stellarTransactionHash:
+        body.stellarTransactionHash || body.transactionHash,
+      network: body.network,
+      ledger: body.ledger,
+      clientProvidedHash: body.contentHash,
     });
 
-    if (record.status === "dead") {
-      return NextResponse.json(
-        {
-          error: "Failed to submit to Stellar blockchain",
-          details: record.last_error,
-        },
-        { status: 502 },
-      );
-    }
-
-    if (record.status !== "confirmed" || record.callback_status !== "applied") {
-      return NextResponse.json(
-        {
-          status: "recovering",
-          idempotencyKey,
-          transactionId: record.id,
-          stellarTxHash: record.stellar_tx_hash,
-          message: record.stellar_tx_hash
-            ? "Transaction confirmed. Awaiting database update."
-            : "Anchoring transaction queued for processing.",
-        },
-        { status: 202 },
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Snippet creation timestamp anchored on Stellar blockchain",
-      data: {
-        snippetId: id,
-        onChainHash,
-        transactionHash: record.stellar_tx_hash,
-        createdAt,
-        verifiedAt: new Date().toISOString(),
-      },
-    });
-  } catch (error: any) {
-    console.error("[verify] Error anchoring snippet:", error);
-
-    if (error?.message?.includes("immutable")) {
-      return NextResponse.json({ error: error.message }, { status: 409 });
-    }
-
-    return NextResponse.json(
-      { error: "Failed to anchor snippet on blockchain" },
-      { status: 500 },
-    );
-  }
-}
-
-/**
- * GET /api/snippets/[id]/verify
- *
- * Verifies snippet integrity by comparing the current content hash against
- * the hash stored on the Stellar blockchain at creation time.
- */
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  try {
-    const { id } = await params;
-
-    const snippet = await getSnippetWithHash(id);
-    if (!snippet) {
-      return NextResponse.json({ error: "Snippet not found" }, { status: 404 });
-    }
-
-    if (!snippet.on_chain_hash) {
-      return NextResponse.json({
-        verified: false,
-        snippetId: id,
-        message: "This snippet has not been anchored on the blockchain yet.",
-        onChainHash: null,
-        transactionHash: null,
-        verifiedAt: null,
-        createdAt: snippet.created_at,
-      });
-    }
-
-    const result = await verifySnippetIntegrity(
-      id,
-      snippet.title,
-      snippet.description || "",
-      snippet.code,
-      snippet.language,
-      snippet.tags || [],
-    );
-
-    return NextResponse.json({
-      verified: result.isValid,
-      snippetId: id,
-      message: result.message,
-      onChainHash: snippet.on_chain_hash,
-      transactionHash: snippet.transaction_hash,
-      verifiedAt: snippet.verified_at,
-      createdAt: snippet.created_at,
-    });
+    return NextResponse.json({ attestation }, { status: 201 });
   } catch (error) {
-    console.error("[verify] Error verifying snippet:", error);
+    if (error instanceof SnippetAttestationAuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.statusCode },
+      );
+    }
+    if (error instanceof SnippetAttestationValidationError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.statusCode },
+      );
+    }
     return NextResponse.json(
-      { error: "Failed to verify snippet integrity" },
+      { error: "Failed to anchor snippet attestation." },
       { status: 500 },
     );
   }
