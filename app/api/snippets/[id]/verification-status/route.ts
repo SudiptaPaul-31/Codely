@@ -1,24 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { VerificationService } from "../../verification.service";
-import { VerificationRepository } from "../../verification.repository";
-
-// UUID validation regex
-const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// Dependency Injection instantiation
-const repository = new VerificationRepository();
-const service = new VerificationService(repository);
-
-/**
- * Validate if a string is a valid UUID format
- */
-function isValidUUID(id: string): boolean {
-  return uuidRegex.test(id);
-}
+import {
+  blockchainVerificationService,
+  VerificationAuthorizationError,
+  VerificationValidationError,
+} from "@/lib/blockchain-verification-service";
 
 /**
  * GET /api/snippets/[id]/verification-status
- * Get the verification status of a specific snippet
+ * Retrieve the authoritative blockchain verification status for a snippet.
  */
 export async function GET(
   req: NextRequest,
@@ -26,46 +15,49 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const viewerWallet = req.headers.get("x-wallet-address") || null;
+    const url = new URL(req.url);
+    const revalidate = url.searchParams.get("revalidate") === "true";
 
-    // Validate snippet ID is UUID format
-    if (!isValidUUID(id)) {
-      console.warn("[API] Invalid snippet ID format:", id);
+    const result =
+      await blockchainVerificationService.getSnippetVerificationStatus(id, {
+        viewerWallet,
+        revalidate,
+      });
+
+    return NextResponse.json(result, { status: 200 });
+  } catch (error) {
+    if (error instanceof VerificationAuthorizationError) {
       return NextResponse.json(
         {
-          error: "Invalid snippet ID format. Must be a valid UUID.",
+          status: "unverifiable",
+          code: error.code,
+          message: error.message,
         },
-        { status: 400 }
+        { status: error.statusCode },
       );
     }
 
-    // Get verification status from service
-    const verificationStatus = await service.getVerificationStatus(id);
+    if (error instanceof VerificationValidationError) {
+      return NextResponse.json(
+        {
+          status: "unverifiable",
+          code: error.code,
+          message: error.message,
+        },
+        { status: error.statusCode },
+      );
+    }
 
-    console.log(
-      `[API] Retrieved verification status for snippet: ${id}`,
-      verificationStatus ? "verified" : "not verified"
-    );
-
-    return NextResponse.json(
-      {
-        snippetId: id,
-        verification: verificationStatus,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    const errorMessage =
+    const message =
       error instanceof Error ? error.message : "Internal Server Error";
-    console.error(
-      "[API] Error retrieving verification status:",
-      errorMessage
-    );
-
     return NextResponse.json(
       {
-        error: errorMessage,
+        status: "unverifiable",
+        code: "NETWORK_UNAVAILABLE",
+        message,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
