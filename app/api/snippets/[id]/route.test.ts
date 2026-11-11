@@ -73,10 +73,11 @@ jest.mock("../signature.middleware", () => ({
 }));
 
 import { NextRequest } from "next/server";
-import { PUT } from "./route";
+import { GET, PUT } from "./route";
 import { SnippetRepository } from "../snippet.repository";
 import { OwnershipMiddleware } from "../ownership.middleware";
 import * as permissionsService from "@/lib/permissions.service";
+import { snippetDocumentationService } from "@/lib/snippet-documentation-service";
 
 const SNIPPET_ID = "550e8400-e29b-41d4-a716-446655440000";
 const WALLET = "GCRKPWEEZPKBMQ7L3FAKKZL7TPJBKEHIWUBMN554ASGZKDJXJ7FCXRRU";
@@ -192,5 +193,56 @@ describe("PUT /api/snippets/[id]", () => {
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json.error).toBe("Snippet not found");
+  });
+});
+
+describe("GET /api/snippets/[id] documentation integration (#217)", () => {
+  beforeEach(() => {
+    snippetDocumentationService.clearAll();
+    snippetDocumentationService.setAccessResolver(null);
+  });
+
+  it("attaches stored documentation seamlessly when retrieving an authorized snippet", async () => {
+    repositoryInstance.findById.mockResolvedValue({
+      ...existing,
+      visibility: "public",
+    });
+
+    const emptyOptInReq = new (NextRequest as unknown as {
+      new (input: string, init?: { headers?: Headers }): NextRequest;
+    })(
+      `http://localhost:3000/api/snippets/${SNIPPET_ID}?includeDocumentation=true`,
+      { headers: new Headers() },
+    );
+    const emptyRes = await GET(emptyOptInReq, { params });
+    expect(emptyRes.status).toBe(200);
+    expect(await emptyRes.json()).toMatchObject({
+      id: SNIPPET_ID,
+      documentation: null,
+    });
+
+    await snippetDocumentationService.createDocumentation(
+      SNIPPET_ID,
+      {
+        overview: "Stellar payment helper documentation.",
+        prerequisites: ["@stellar/stellar-sdk"],
+      },
+      WALLET,
+    );
+
+    const populatedReq = new (NextRequest as unknown as {
+      new (input: string, init?: { headers?: Headers }): NextRequest;
+    })(`http://localhost:3000/api/snippets/${SNIPPET_ID}`, {
+      headers: new Headers(),
+    });
+    const populatedRes = await GET(populatedReq, { params });
+    expect(populatedRes.status).toBe(200);
+    const populatedJson = await populatedRes.json();
+    expect(populatedJson.documentation.overview).toBe(
+      "Stellar payment helper documentation.",
+    );
+    expect(populatedJson.documentation.prerequisites).toEqual([
+      "@stellar/stellar-sdk",
+    ]);
   });
 });

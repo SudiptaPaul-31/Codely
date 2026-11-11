@@ -1,5 +1,4 @@
 import {
-  createSnippetVersion,
   getVersionHistory,
   getVersionById,
   restoreVersion,
@@ -16,6 +15,7 @@ import { appendActivityLog, extractIp, extractUserAgent } from "@/lib/activity-l
 import { SignatureMiddleware } from "../signature.middleware";
 import { ShareService } from "../share.service";
 import { ShareRepository } from "../share.repository";
+import { snippetDocumentationService } from "@/lib/snippet-documentation-service";
 
 // Dependency Injection instantiation
 const repository = new SnippetRepository();
@@ -23,6 +23,22 @@ const service = new SnippetService(repository);
 const ownershipMiddleware = new OwnershipMiddleware();
 const signatureMiddleware = new SignatureMiddleware();
 const shareService = new ShareService(new ShareRepository(), repository);
+
+function withSnippetDocumentation(
+  snippet: Record<string, unknown>,
+  snippetId: string,
+  includeDocumentation: boolean,
+) {
+  const documentation =
+    snippetDocumentationService.getStoredDocumentation(snippetId);
+  if (!includeDocumentation && !documentation) {
+    return snippet;
+  }
+  return {
+    ...snippet,
+    documentation,
+  };
+}
 
 export async function GET(
   req: NextRequest,
@@ -62,17 +78,28 @@ export async function GET(
     }
 
     // Default: get snippet by ID via service
-    const snippet = await service.getSnippetById(id);
+    const snippet = (await service.getSnippetById(id)) as Record<
+      string,
+      unknown
+    >;
+    const includeDocumentation =
+      url.searchParams.get("includeDocumentation") === "true";
 
     // Visibility-based authorization
-    const visibility = (snippet as any).visibility ?? "private";
-    const ownerWallet = (snippet as any).owner_wallet_address;
+    const visibility =
+      typeof snippet.visibility === "string" ? snippet.visibility : "private";
+    const ownerWallet =
+      typeof snippet.owner_wallet_address === "string"
+        ? snippet.owner_wallet_address
+        : null;
     const viewerWallet = await OwnershipMiddleware.extractWalletAddress(req);
     const isOwner =
       !!viewerWallet && (!ownerWallet || viewerWallet === ownerWallet);
 
     if (visibility === "public" || isOwner) {
-      return NextResponse.json(snippet);
+      return NextResponse.json(
+        withSnippetDocumentation(snippet, id, includeDocumentation),
+      );
     }
 
     if (visibility === "private") {
@@ -122,7 +149,9 @@ export async function GET(
         );
       }
 
-      return NextResponse.json(snippet);
+      return NextResponse.json(
+        withSnippetDocumentation(snippet, id, includeDocumentation),
+      );
     }
 
     // Fallback: treat unknown visibility as private
