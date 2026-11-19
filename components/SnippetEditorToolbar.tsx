@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -18,6 +19,9 @@ export interface SnippetEditorToolbarProps {
   onFormat: () => void;
   formatting: boolean;
   formatStatus: FormatStatus | null;
+  onSave?: () => void;
+  onSearch?: () => void;
+  onCreate?: () => void;
 }
 
 const STATUS_COLORS: Record<FormatStatus["type"], string> = {
@@ -25,6 +29,16 @@ const STATUS_COLORS: Record<FormatStatus["type"], string> = {
   info: "text-sky-300",
   error: "text-red-400",
 };
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  );
+}
 
 export default function SnippetEditorToolbar({
   language,
@@ -36,7 +50,29 @@ export default function SnippetEditorToolbar({
   onFormat,
   formatting,
   formatStatus,
+  onSave,
+  onSearch,
+  onCreate,
 }: SnippetEditorToolbarProps) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      let handler: (() => void) | undefined;
+      if (key === "s") handler = onSave;
+      else if (key === "k") handler = onSearch;
+      else if (key === "n") handler = onCreate;
+      if (!handler) return;
+      // Allow Ctrl+S etc. even inside editors, since these shortcuts are
+      // explicitly requested; only prevent the browser default action.
+      event.preventDefault();
+      handler();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onSave, onSearch, onCreate]);
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-purple-500/20 bg-slate-800/70 px-3 py-2">
@@ -80,6 +116,10 @@ export default function SnippetEditorToolbar({
           </Button>
         </div>
       </div>
+
+      <p className="sr-only" id="editor-shortcuts-help">
+        Keyboard shortcuts: Ctrl+S saves the snippet, Ctrl+K opens search, Ctrl+N creates a new snippet. On Mac, use Command instead of Ctrl.
+      </p>
 
       {suggestion && (
         <div
