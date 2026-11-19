@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Code2, Menu, X } from "lucide-react";
@@ -14,10 +14,52 @@ const NAV_LINKS = [
   { label: "Activity", href: "/transactions" },
 ];
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  );
+}
+
 export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  const runShortcut = useCallback((action: "save" | "search" | "create") => {
+    if (action === "save") {
+      window.dispatchEvent(new CustomEvent("codely:save-snippet"));
+    } else if (action === "search") {
+      window.dispatchEvent(new CustomEvent("codely:open-search"));
+    } else {
+      window.dispatchEvent(new CustomEvent("codely:create-snippet"));
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      const editable = isEditableTarget(event.target);
+
+      if (key === "s") {
+        event.preventDefault();
+        runShortcut("save");
+      } else if (key === "k" && !editable) {
+        event.preventDefault();
+        runShortcut("search");
+      } else if (key === "n" && !editable) {
+        event.preventDefault();
+        runShortcut("create");
+      }
+    };
+
+    document.addEventListener("keydown", handleShortcut);
+    return () => document.removeEventListener("keydown", handleShortcut);
+  }, [runShortcut]);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -77,6 +119,7 @@ export function Navbar() {
           aria-label="Toggle navigation menu"
           aria-expanded={mobileOpen}
           aria-controls="mobile-navigation"
+          title="Shortcuts: Ctrl+S save, Ctrl+K search, Ctrl+N new snippet"
         >
           {mobileOpen ? (
             <X className="w-6 h-6" />

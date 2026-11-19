@@ -17,7 +17,6 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files
-.env*
 
 # vercel
 .vercel
@@ -28,3 +27,4 @@ next-env.d.ts
 
 # test coverage
 coverage
+config.bat

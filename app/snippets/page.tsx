@@ -13,11 +13,22 @@ interface SnippetSummary {
   description?: string;
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
 export default function SnippetsPage() {
   const [snippets, setSnippets] = useState<SnippetSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const recordedHashRef = useRef<string | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const saveRef = useRef<HTMLButtonElement | null>(null);
+  const createRef = useRef<HTMLButtonElement | null>(null);
+  const [shortcutHint, setShortcutHint] = useState("");
 
   async function load() {
     setLoading(true);
@@ -39,6 +50,52 @@ export default function SnippetsPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  // Keyboard shortcuts: Ctrl/Cmd+S save, Ctrl/Cmd+K search, Ctrl/Cmd+N create
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const mod = event.ctrlKey || event.metaKey;
+      if (!mod || event.altKey || event.shiftKey) return;
+      const key = event.key.toLowerCase();
+
+      if (key === "s") {
+        event.preventDefault();
+        if (saveRef.current && !saveRef.current.disabled) {
+          saveRef.current.click();
+          setShortcutHint("Saved");
+        } else {
+          setShortcutHint("Nothing to save");
+        }
+      } else if (key === "k") {
+        event.preventDefault();
+        const input = searchRef.current ?? document.querySelector<HTMLInputElement>(
+          'input[type="search"], [data-shortcut="search"]',
+        );
+        if (input) {
+          input.focus();
+          input.select?.();
+        }
+      } else if (key === "n") {
+        // Don't hijack browser new-window when typing in a field.
+        if (isEditableTarget(event.target) && !createRef.current) return;
+        event.preventDefault();
+        if (createRef.current && !createRef.current.disabled) {
+          createRef.current.click();
+        } else {
+          setShortcutHint("Create not available");
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!shortcutHint) return;
+    const t = window.setTimeout(() => setShortcutHint(""), 2000);
+    return () => window.clearTimeout(t);
+  }, [shortcutHint]);
 
   // Record / highlight snippets opened via /snippets#id (dashboard & collections)
   useEffect(() => {
@@ -110,6 +167,19 @@ export default function SnippetsPage() {
               Create folders and drag snippets to arrange your workspace. Changes
               are saved on this device.
             </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Shortcuts: <kbd>Ctrl</kbd>+<kbd>S</kbd> save,{" "}
+              <kbd>Ctrl</kbd>+<kbd>K</kbd> search,{" "}
+              <kbd>Ctrl</kbd>+<kbd>N</kbd> new snippet
+            </p>
+            <div role="status" aria-live="polite" className="sr-only">
+              {shortcutHint}
+            </div>
+            {shortcutHint && (
+              <p className="mt-1 text-xs text-fuchsia-300" aria-hidden="true">
+                {shortcutHint}
+              </p>
+            )}
           </header>
           {loading && (
             <p className="py-20 text-center text-slate-400">Loading snippets…</p>

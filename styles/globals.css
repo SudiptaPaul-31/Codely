@@ -123,3 +123,16 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Keyboard shortcut hint styling and focus-visible fallback for non-keyboard users */
+.kbd-hint {
+  @apply ml-2 inline-flex items-center rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground;
+}
+
+.sr-only-focusable:not(:focus):not(:focus-within) {
+  @apply sr-only;
+}
+
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-ring;
+}

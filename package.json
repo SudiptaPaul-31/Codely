@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
+    "build": "node init && next build",
+    "dev": "node init && next dev",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
-    "start": "next start",
+    "start": "node init && next start",
     "test": "jest"
   },
   "dependencies": {

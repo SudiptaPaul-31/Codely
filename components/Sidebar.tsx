@@ -16,6 +16,7 @@ import {
 	LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 const NAV_ITEMS = [
 	{ label: "Home", href: "/", icon: Home },
@@ -44,6 +45,18 @@ export function Sidebar() {
 		document.addEventListener("keydown", handleKeyDown);
 		return () => document.removeEventListener("keydown", handleKeyDown);
 	}, [mobileOpen]);
+
+	useKeyboardShortcuts({
+		onSearch: () => {
+			const input = document.querySelector<HTMLElement>(
+				'[data-search-input], input[type="search"]',
+			);
+			input?.focus();
+		},
+		onCreate: () => {
+			window.location.href = "/snippets?new=1";
+		},
+	});
 
 	return (
 		<>
