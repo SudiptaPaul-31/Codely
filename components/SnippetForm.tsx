@@ -1,5 +1,6 @@
 "use client";
 
+import { useHotkeys } from "./hooks/useKeyboardShortcuts";
 import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -108,6 +109,30 @@ export default function SnippetForm({
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Retry timer ref
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keyboard shortcuts: Ctrl/Cmd+S saves, Ctrl/Cmd+K focuses search,
+  // Ctrl/Cmd+N requests a new snippet from the parent.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        void handleSubmit(onSubmit)();
+      } else if (key === "k") {
+        event.preventDefault();
+        const search = document.querySelector<HTMLInputElement>(
+          '[data-shortcut="search"]',
+        );
+        search?.focus();
+      } else if (key === "n") {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent("snippet:new"));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleSubmit]);
 
   // Build a stable snapshot string of the current form values
   const buildSnapshot = (values: SnippetFormValues): string => {
@@ -461,6 +486,9 @@ export default function SnippetForm({
         </h2>
         {renderAutosaveStatus()}
       </div>
+      <p role="note" className="mb-4 text-xs text-slate-400">
+        Shortcuts: Ctrl+S save · Ctrl+K search · Ctrl+N new snippet
+      </p>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="title" className="text-white">
